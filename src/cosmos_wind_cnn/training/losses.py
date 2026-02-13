@@ -96,25 +96,25 @@ class CombinedLoss(nn.Module):
             self.wind_channels.add(u_idx)
             self.wind_channels.add(v_idx)
         
-        # Non-wind channels
-        self.non_wind_channels = []
-    
+        # Non-wind channels (computed on first forward pass)
+        self._non_wind_channels = None
+
     def forward(self, pred, target):
         """
         Args:
             pred: (batch, n_channels, H, W) - predicted outputs
             target: (batch, n_channels, H, W) - target outputs
-        
+
         Returns:
             total_loss: Combined loss
             loss_dict: Dictionary of loss components
         """
         n_channels = pred.shape[1]
-        
-        # Identify non-wind channels
-        if not self.non_wind_channels:
-            self.non_wind_channels = [i for i in range(n_channels) if i not in self.wind_channels]
-        
+
+        # Compute non-wind channels once
+        if self._non_wind_channels is None:
+            self._non_wind_channels = [i for i in range(n_channels) if i not in self.wind_channels]
+
         total_loss = 0.0
         loss_dict = {}
         n_components = 0
@@ -134,9 +134,9 @@ class CombinedLoss(nn.Module):
                     loss_dict[f'wind_pair_{pair_idx}_{key}'] = val
         
         # Calculate MSE for non-wind variables
-        if self.non_wind_channels:
-            non_wind_pred = pred[:, self.non_wind_channels, :, :]
-            non_wind_target = target[:, self.non_wind_channels, :, :]
+        if self._non_wind_channels:
+            non_wind_pred = pred[:, self._non_wind_channels, :, :]
+            non_wind_target = target[:, self._non_wind_channels, :, :]
             
             non_wind_loss = self.mse_loss(non_wind_pred, non_wind_target)
             total_loss += non_wind_loss

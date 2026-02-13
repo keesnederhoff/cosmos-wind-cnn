@@ -24,7 +24,7 @@ def parse_variable_config(config: dict) -> Tuple[List[str], List[str], List[Tupl
     """
     input_vars = []
     output_vars = []
-    wind_pairs = []
+    wind_var_indices = {}  # var_name -> index in output_vars
 
     # Process variable pairs
     for var_name, pair in config['variable_pairs'].items():
@@ -34,11 +34,12 @@ def parse_variable_config(config: dict) -> Tuple[List[str], List[str], List[Tupl
         # Low-res goes in as input
         input_vars.append(low_res)
         # High-res is the target output
+        output_idx = len(output_vars)
         output_vars.append(high_res)
 
-        # Track wind pairs for special wind loss
+        # Track wind variables by their index in output_vars
         if 'wind' in var_name or var_name in ['u', 'v']:
-            wind_pairs.append((var_name, high_res))
+            wind_var_indices[var_name] = output_idx
 
     # Add additional input-only variables
     if 'additional_inputs' in config and config['additional_inputs']:
@@ -50,10 +51,11 @@ def parse_variable_config(config: dict) -> Tuple[List[str], List[str], List[Tupl
 
     # Group wind pairs as (u_idx, v_idx) for loss calculation
     wind_pair_indices = []
-    output_u_indices = [i for i, (name, _) in enumerate(wind_pairs) if 'u' in name]
-    output_v_indices = [i for i, (name, _) in enumerate(wind_pairs) if 'v' in name]
+    u_indices = [(name, idx) for name, idx in wind_var_indices.items() if 'u' in name]
+    v_indices = [(name, idx) for name, idx in wind_var_indices.items() if 'v' in name]
 
-    if output_u_indices and output_v_indices:
-        wind_pair_indices = list(zip(output_u_indices, output_v_indices))
+    if u_indices and v_indices:
+        wind_pair_indices = [(u_idx, v_idx) for (_, u_idx), (_, v_idx)
+                             in zip(u_indices, v_indices)]
 
     return input_vars, output_vars, wind_pair_indices

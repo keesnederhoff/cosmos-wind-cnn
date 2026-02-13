@@ -1,4 +1,4 @@
-﻿"""
+"""
 3D U-Net architecture for wind prediction
 """
 
@@ -82,19 +82,21 @@ class Wind3DUNET(nn.Module):
         # x and target are 5D: (batch, channels, seq_len, H, W)
         diff_h = target.shape[3] - x.shape[3]
         diff_w = target.shape[4] - x.shape[4]
-        
-        if diff_h != 0 or diff_w != 0:
-            # Pad if upsampled tensor is smaller
-            pad_top = diff_h // 2
-            pad_bottom = diff_h - pad_top
-            pad_left = diff_w // 2
-            pad_right = diff_w - pad_left
+
+        if diff_h > 0 or diff_w > 0:
+            # Pad if upsampled tensor is smaller than target
+            pad_h = max(diff_h, 0)
+            pad_w = max(diff_w, 0)
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
             x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
-        
-        # Crop if upsampled tensor is larger
+
+        # Crop if upsampled tensor is larger than target
         if x.shape[3] > target.shape[3] or x.shape[4] > target.shape[4]:
             x = x[:, :, :, :target.shape[3], :target.shape[4]]
-        
+
         return x
 
     def forward(self, x):

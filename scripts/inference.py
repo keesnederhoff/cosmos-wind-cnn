@@ -16,6 +16,7 @@ import xarray as xr
 import numpy as np
 
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.utils.config import parse_variable_config
 
 
 def load_model(checkpoint_path, device='cuda'):
@@ -24,18 +25,7 @@ def load_model(checkpoint_path, device='cuda'):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = checkpoint['config']
 
-    # Parse config
-    input_vars = []
-    output_vars = []
-    for var_name, pair in config['variable_pairs'].items():
-        input_vars.append(pair['low_res'])
-        output_vars.append(pair['high_res'])
-    if 'additional_inputs' in config and config['additional_inputs']:
-        additional = config['additional_inputs']
-        if isinstance(additional, str):
-            input_vars.append(additional)
-        elif isinstance(additional, list):
-            input_vars.extend(additional)
+    input_vars, output_vars, _ = parse_variable_config(config)
 
     model = Wind3DUNET(
         in_channels=len(input_vars),
@@ -95,7 +85,7 @@ def denormalize_output(output, output_vars, stats):
     return predictions
 
 
-def save_predictions(predictions, lats, lons, x_coords, y_coords, output_path):
+def save_predictions(predictions, lats, lons, x_coords, y_coords, output_path, crs=None):
     """Save predictions as NetCDF."""
     output_ds = xr.Dataset({
         var: (['y', 'x'], data) for var, data in predictions.items()
@@ -114,7 +104,8 @@ def save_predictions(predictions, lats, lons, x_coords, y_coords, output_path):
     if x_coords is not None and y_coords is not None:
         output_ds['x'].attrs = {'units': 'meters', 'standard_name': 'projection_x_coordinate'}
         output_ds['y'].attrs = {'units': 'meters', 'standard_name': 'projection_y_coordinate'}
-        output_ds.attrs['crs'] = 'EPSG:32610'
+        if crs:
+            output_ds.attrs['crs'] = crs
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +166,8 @@ def main():
         print(f"  Min: {data.min():.4f}, Max: {data.max():.4f}, Mean: {data.mean():.4f}")
 
     # Save
-    save_predictions(predictions, lats, lons, x_coords, y_coords, output_path)
+    crs = config.get('crs')
+    save_predictions(predictions, lats, lons, x_coords, y_coords, output_path, crs=crs)
 
     print("\n" + "=" * 70)
     print("Inference Complete!")

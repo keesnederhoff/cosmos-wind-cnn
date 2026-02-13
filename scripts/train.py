@@ -14,7 +14,6 @@ from datetime import timedelta
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
 import matplotlib.pyplot as plt
 
 from cosmos_wind_cnn.data.dataset import WindDataset3D, WindDatasetInMemory
@@ -237,7 +236,17 @@ def main():
             patience_counter += 1
 
         if (epoch + 1) % config.get('save_every', 10) == 0:
-            torch.save(checkpoint, checkpoint_dir / f'checkpoint_epoch_{epoch + 1}.pth')
+            periodic_checkpoint = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+                'val_metrics': val_metrics,
+                'config': config,
+            }
+            torch.save(periodic_checkpoint, checkpoint_dir / f'checkpoint_epoch_{epoch + 1}.pth')
             print(f"  Saved checkpoint")
 
         if patience_counter >= config.get('early_stopping_patience', 15):

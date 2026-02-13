@@ -18,13 +18,13 @@ import xarray as xr
 
 from cosmos_wind_cnn.data.dataset import WindDataset3D
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.training.losses import WindLoss
+from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.metrics import calculate_all_metrics
 from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
 from cosmos_wind_cnn.utils.visualization import plot_sample_predictions, plot_error_distribution
 
 
-def evaluate_model(model, dataloader, criterion, device, dataset):
+def evaluate_model(model, dataloader, criterion, device, dataset, wind_pair_indices=None):
     """Evaluate model on dataset."""
     model.eval()
     all_preds = []
@@ -48,7 +48,18 @@ def evaluate_model(model, dataloader, criterion, device, dataset):
     all_inputs = torch.cat(all_inputs)
 
     avg_loss = np.mean(all_losses)
-    metrics = calculate_all_metrics(all_preds, all_targets)
+
+    # Calculate wind-specific metrics on the wind channels only
+    if wind_pair_indices:
+        u_idx, v_idx = wind_pair_indices[0]
+        wind_preds = all_preds[:, [u_idx, v_idx], :, :]
+        wind_targets = all_targets[:, [u_idx, v_idx], :, :]
+        metrics = calculate_all_metrics(wind_preds, wind_targets)
+    else:
+        metrics = {
+            'rmse': torch.sqrt(torch.mean((all_preds - all_targets) ** 2)).item(),
+            'mae': torch.mean(torch.abs(all_preds - all_targets)).item(),
+        }
 
     # Denormalize
     preds_denorm = _denormalize(all_preds, dataset.output_vars, dataset)
@@ -71,15 +82,18 @@ def _denormalize(data, var_list, dataset):
 
 def _get_coordinates(dataset):
     """Extract x/y UTM coordinates from dataset."""
-    ds = xr.open_dataset(dataset.netcdf_path)
-    coords = {}
-    if 'x' in ds.coords and 'y' in ds.coords:
-        coords['x'] = ds.x.values
-        coords['y'] = ds.y.values
+    if hasattr(dataset, 'netcdf_path'):
+        ds = xr.open_dataset(dataset.netcdf_path)
+        coords = {}
+        if 'x' in ds.coords and 'y' in ds.coords:
+            coords['x'] = ds.x.values
+            coords['y'] = ds.y.values
+        else:
+            coords['x'] = None
+            coords['y'] = None
+        ds.close()
     else:
-        coords['x'] = None
-        coords['y'] = None
-    ds.close()
+        coords = {'x': None, 'y': None}
     return coords
 
 
@@ -141,7 +155,8 @@ def main():
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded model from epoch {checkpoint['epoch']}")
 
-    criterion = WindLoss(
+    criterion = CombinedLoss(
+        wind_pair_indices=wind_pair_indices,
         alpha=config.get('loss_alpha', 1.0),
         beta=config.get('loss_beta', 0.5),
         gamma=config.get('loss_gamma', 0.3),
@@ -150,7 +165,8 @@ def main():
     # Evaluate
     print("\nEvaluating on test set...")
     test_loss, metrics, preds, targets, inputs, coords = evaluate_model(
-        model, test_loader, criterion, device, test_dataset
+        model, test_loader, criterion, device, test_dataset,
+        wind_pair_indices=wind_pair_indices,
     )
 
     print("\n" + "=" * 70)

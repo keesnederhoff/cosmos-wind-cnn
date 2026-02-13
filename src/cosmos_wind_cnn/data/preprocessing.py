@@ -1,4 +1,4 @@
-﻿"""
+"""
 NetCDF data preprocessing utilities
 """
 
