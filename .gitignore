@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter notebook checkpoints (notebooks themselves are tracked)
+.ipynb_checkpoints/
+
+# Data files (across all case studies)
+*.nc
+*.pkl
+
+# Model checkpoints
+*.pth
+
+# TensorBoard logs
+**/logs/events.*
+
+# Output files (generated)
+**/outputs/**
+!**/outputs/.gitkeep
+
+# Large files
+*.h5
+*.hdf5
+*.tar.gz
+*.zip
+
+# Backup files
+*.bak
+
+# Keep directory structure
+!**/.gitkeep
+
+# Claude Code
+.claude/

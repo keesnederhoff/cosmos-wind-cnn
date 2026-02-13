@@ -1,0 +1,186 @@
+"""
+Evaluate trained model on test set.
+
+Usage:
+    python scripts/evaluate.py --case-study case_studies/sf_bay
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+
+import torch
+import numpy as np
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import xarray as xr
+
+from cosmos_wind_cnn.data.dataset import WindDataset3D
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.training.losses import WindLoss
+from cosmos_wind_cnn.training.metrics import calculate_all_metrics
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.visualization import plot_sample_predictions, plot_error_distribution
+
+
+def evaluate_model(model, dataloader, criterion, device, dataset):
+    """Evaluate model on dataset."""
+    model.eval()
+    all_preds = []
+    all_targets = []
+    all_inputs = []
+    all_losses = []
+
+    with torch.no_grad():
+        for inputs, targets in tqdm(dataloader, desc='Evaluating'):
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+            outputs = model(inputs)
+            loss, _ = criterion(outputs, targets)
+            all_losses.append(loss.item())
+            all_preds.append(outputs.cpu())
+            all_targets.append(targets.cpu())
+            all_inputs.append(inputs[:, -1, :, :, :].cpu())
+
+    all_preds = torch.cat(all_preds)
+    all_targets = torch.cat(all_targets)
+    all_inputs = torch.cat(all_inputs)
+
+    avg_loss = np.mean(all_losses)
+    metrics = calculate_all_metrics(all_preds, all_targets)
+
+    # Denormalize
+    preds_denorm = _denormalize(all_preds, dataset.output_vars, dataset)
+    targets_denorm = _denormalize(all_targets, dataset.output_vars, dataset)
+    inputs_denorm = _denormalize(all_inputs, dataset.input_vars, dataset)
+
+    # Coordinates
+    coords = _get_coordinates(dataset)
+
+    return avg_loss, metrics, preds_denorm, targets_denorm, inputs_denorm, coords
+
+
+def _denormalize(data, var_list, dataset):
+    """Denormalize data back to original scale."""
+    denorm = torch.zeros_like(data)
+    for i, var in enumerate(var_list):
+        denorm[:, i] = torch.from_numpy(dataset.denormalize(data[:, i].numpy(), var))
+    return denorm
+
+
+def _get_coordinates(dataset):
+    """Extract x/y UTM coordinates from dataset."""
+    ds = xr.open_dataset(dataset.netcdf_path)
+    coords = {}
+    if 'x' in ds.coords and 'y' in ds.coords:
+        coords['x'] = ds.x.values
+        coords['y'] = ds.y.values
+    else:
+        coords['x'] = None
+        coords['y'] = None
+    ds.close()
+    return coords
+
+
+def main():
+    # Change to project root directory (parent of scripts/)
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent
+    os.chdir(project_root)
+    print(f"Working directory: {project_root}\n")
+    
+    parser = argparse.ArgumentParser(description='Evaluate trained model')
+    parser.add_argument('--case-study', default='case_studies/sf_bay',
+                        help='Path to case study directory')
+    args = parser.parse_args()
+
+    case_dir = Path(args.case_study)
+    config = load_config(case_dir / 'configs' / 'training.yaml')
+
+    input_vars, output_vars, wind_pair_indices = parse_variable_config(config)
+
+    print("=" * 70)
+    print(f"Model Evaluation: {case_dir.name}")
+    print("=" * 70)
+    print(f"\nInput variables: {input_vars}")
+    print(f"Output variables: {output_vars}")
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'\nDevice: {device}')
+
+    data_dir = case_dir / 'data' / 'processed'
+
+    test_dataset = WindDataset3D(
+        netcdf_path=str(data_dir / 'test.nc'),
+        stats_path=str(data_dir / 'normalization_stats.pkl'),
+        input_vars=input_vars,
+        output_vars=output_vars,
+        sequence_length=config['sequence_length'],
+        forecast_horizon=config['forecast_horizon'],
+        stride=1,
+    )
+
+    test_loader = DataLoader(
+        test_dataset, batch_size=config['batch_size'], shuffle=False,
+        num_workers=config['num_workers'], pin_memory=True,
+    )
+
+    # Load model
+    checkpoint_path = case_dir / 'checkpoints' / 'best_model.pth'
+    if not checkpoint_path.exists():
+        print(f"Error: Checkpoint not found at {checkpoint_path}")
+        return
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model = Wind3DUNET(
+        in_channels=len(input_vars),
+        out_channels=len(output_vars),
+        base_channels=config.get('base_channels', 32),
+    ).to(device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Loaded model from epoch {checkpoint['epoch']}")
+
+    criterion = WindLoss(
+        alpha=config.get('loss_alpha', 1.0),
+        beta=config.get('loss_beta', 0.5),
+        gamma=config.get('loss_gamma', 0.3),
+    )
+
+    # Evaluate
+    print("\nEvaluating on test set...")
+    test_loss, metrics, preds, targets, inputs, coords = evaluate_model(
+        model, test_loader, criterion, device, test_dataset
+    )
+
+    print("\n" + "=" * 70)
+    print("Test Results")
+    print("=" * 70)
+    print(f"Test Loss: {test_loss:.4f}")
+    print(f"\nMetrics:")
+    for key, value in metrics.items():
+        print(f"  {key}: {value:.4f}")
+
+    # Save
+    output_dir = case_dir / 'outputs' / 'evaluation'
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    results = {
+        'test_loss': test_loss,
+        'metrics': metrics,
+        'config': config,
+        'checkpoint_epoch': checkpoint['epoch'],
+    }
+    with open(output_dir / 'test_results.json', 'w') as f:
+        json.dump(results, f, indent=2)
+
+    print("\nGenerating visualizations...")
+    plot_sample_predictions(preds, targets, inputs, output_vars, coords,
+                            output_dir / 'samples', n_samples=5)
+    plot_error_distribution(preds, targets, output_vars, output_dir)
+
+    print(f"\nResults saved to: {output_dir}")
+
+
+if __name__ == '__main__':
+    main()

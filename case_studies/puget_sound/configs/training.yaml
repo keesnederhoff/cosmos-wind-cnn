@@ -1,0 +1,50 @@
+# Puget Sound Case Study - Training Configuration
+#
+# TODO: Adjust hyperparameters as needed for the Puget Sound domain.
+# Start with the same settings as SF Bay and tune from there.
+
+# Variable Pairs (high-resolution target : low-resolution input)
+variable_pairs:
+  wind_u:
+    high_res: 'conus404_u'
+    low_res: 'era5_u'
+  wind_v:
+    high_res: 'conus404_v'
+    low_res: 'era5_v'
+  temperature:
+    high_res: 'conus404_temp'
+    low_res: 'era5_temp'
+  pressure:
+    high_res: 'conus404_pressure'
+    low_res: 'era5_pressure'
+  radiation:
+    high_res: 'conus404_radiation'
+    low_res: 'era5_radiation'
+
+additional_inputs:
+  - 'cloud_area'
+
+# Model Architecture
+base_channels: 32
+sequence_length: 6
+forecast_horizon: 1
+
+# Training Parameters
+batch_size: 8
+num_epochs: 200
+learning_rate: 0.001
+weight_decay: 0.0001
+num_workers: 4
+
+load_in_memory: false
+train_stride: 1
+val_stride: 1
+
+loss_alpha: 1.0
+loss_beta: 0.5
+loss_gamma: 0.3
+
+scheduler_patience: 10
+scheduler_factor: 0.5
+early_stopping_patience: 30
+save_every: 10

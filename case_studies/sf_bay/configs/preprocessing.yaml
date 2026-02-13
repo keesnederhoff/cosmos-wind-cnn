@@ -1,0 +1,31 @@
+# SF Bay Case Study - Preprocessing Configuration
+
+# File mappings: variable_key -> filename in data/raw/
+file_dict:
+  # Wind U component
+  conus404_u: 'CONUS404_SFbay_4km_eastward_wind_2020_2021_UTM10.nc'
+  era5_u: 'ERA5_eastward_wind_2020_2021_UTM.nc'
+
+  # Wind V component
+  conus404_v: 'CONUS404_SFbay_4km_northward_wind_2020_2021_UTM10.nc'
+  era5_v: 'ERA5_northward_wind_2020_2021_UTM.nc'
+
+  # Dew Point Temperature
+  conus404_temp: 'CONUS404_SFbay_4km_dew_point_temperature_2020_2021_UTM10.nc'
+  era5_temp: 'ERA5_dew_point_temperature_2020_2021_UTM.nc'
+
+  # Air Pressure
+  conus404_pressure: 'CONUS404_SFbay_4km_air_pressure_fixed_height_2020_2021_UTM10.nc'
+  era5_pressure: 'ERA5_air_pressure_fixed_height_2020_2021_UTM.nc'
+
+  # Solar Radiation
+  conus404_radiation: 'CONUS404_SFbay_4km_surface_solar_radiation_2020_2021_UTM10.nc'
+  era5_radiation: 'ERA5_surface_solar_radiation_2020_2021_UTM.nc'
+
+  # Additional input-only variables
+  cloud_area: 'ERA5_cloud_area_fraction_2020_2021_UTM.nc'
+
+# Data split ratios
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15

@@ -1,0 +1,34 @@
+# Puget Sound Case Study - Preprocessing Configuration
+#
+# TODO: Update file_dict with Puget Sound data filenames once data is prepared.
+# The data preparation pipeline is documented in docs/data_preparation.md.
+
+# File mappings: variable_key -> filename in data/raw/
+file_dict:
+  # Wind U component
+  conus404_u: 'CONUS404_PugetSound_eastward_wind_YYYY_YYYY_UTM10.nc'
+  era5_u: 'ERA5_eastward_wind_YYYY_YYYY_UTM.nc'
+
+  # Wind V component
+  conus404_v: 'CONUS404_PugetSound_northward_wind_YYYY_YYYY_UTM10.nc'
+  era5_v: 'ERA5_northward_wind_YYYY_YYYY_UTM.nc'
+
+  # Temperature
+  conus404_temp: 'CONUS404_PugetSound_dew_point_temperature_YYYY_YYYY_UTM10.nc'
+  era5_temp: 'ERA5_dew_point_temperature_YYYY_YYYY_UTM.nc'
+
+  # Air Pressure
+  conus404_pressure: 'CONUS404_PugetSound_air_pressure_fixed_height_YYYY_YYYY_UTM10.nc'
+  era5_pressure: 'ERA5_air_pressure_fixed_height_YYYY_YYYY_UTM.nc'
+
+  # Solar Radiation
+  conus404_radiation: 'CONUS404_PugetSound_surface_solar_radiation_YYYY_YYYY_UTM10.nc'
+  era5_radiation: 'ERA5_surface_solar_radiation_YYYY_YYYY_UTM.nc'
+
+  # Additional input-only variables
+  cloud_area: 'ERA5_cloud_area_fraction_YYYY_YYYY_UTM.nc'
+
+# Data split ratios
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15

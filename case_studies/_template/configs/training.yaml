@@ -1,0 +1,55 @@
+# Case Study Template - Training Configuration
+#
+# Adjust hyperparameters for your specific domain.
+# See docs/adding_case_study.md for guidance on tuning.
+
+# Variable Pairs
+# Each pair maps a low-res input to a high-res target.
+# The model learns: low_res -> high_res
+variable_pairs:
+  wind_u:
+    high_res: 'conus404_u'      # Name of the high-res variable in preprocessed data
+    low_res: 'era5_u'           # Name of the low-res variable in preprocessed data
+  wind_v:
+    high_res: 'conus404_v'
+    low_res: 'era5_v'
+  temperature:
+    high_res: 'conus404_temp'
+    low_res: 'era5_temp'
+  # Add more pairs as needed...
+
+# Additional input-only variables
+additional_inputs:
+  - 'cloud_area'
+
+# Model Architecture
+base_channels: 32       # Feature channels (32->64->128->256->512). Reduce if OOM.
+sequence_length: 6      # Number of input timesteps
+forecast_horizon: 1     # Steps ahead to predict
+
+# Training Parameters
+batch_size: 8           # Reduce if GPU memory is limited
+num_epochs: 200
+learning_rate: 0.001
+weight_decay: 0.0001
+num_workers: 4          # Set to 0 if multiprocessing errors occur
+
+# Data Loading
+load_in_memory: false   # Set true if enough RAM (faster training)
+train_stride: 1         # Increase to reduce dataset size
+val_stride: 1
+
+# Loss Function Weights (wind pairs only)
+loss_alpha: 1.0         # Component MSE
+loss_beta: 0.5          # Speed MAE
+loss_gamma: 0.3         # Direction cosine similarity
+
+# Learning Rate Scheduler
+scheduler_patience: 10
+scheduler_factor: 0.5
+
+# Early Stopping
+early_stopping_patience: 30
+
+# Checkpointing
+save_every: 10

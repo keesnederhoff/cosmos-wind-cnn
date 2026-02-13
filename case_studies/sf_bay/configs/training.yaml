@@ -1,0 +1,55 @@
+# SF Bay Case Study - Training Configuration
+
+# Variable Pairs (high-resolution target : low-resolution input)
+variable_pairs:
+  wind_u:
+    high_res: 'conus404_u'
+    low_res: 'era5_u'
+  wind_v:
+    high_res: 'conus404_v'
+    low_res: 'era5_v'
+  temperature:
+    high_res: 'conus404_temp'
+    low_res: 'era5_temp'
+  pressure:
+    high_res: 'conus404_pressure'
+    low_res: 'era5_pressure'
+  radiation:
+    high_res: 'conus404_radiation'
+    low_res: 'era5_radiation'
+
+# Additional input-only variables (used as context, not predicted)
+additional_inputs:
+  - 'cloud_area'
+
+# Model Architecture
+base_channels: 32
+sequence_length: 6
+forecast_horizon: 1
+
+# Training Parameters
+batch_size: 8
+num_epochs: 5
+learning_rate: 0.001
+weight_decay: 0.0001
+num_workers: 4
+
+# Data Loading
+load_in_memory: false
+train_stride: 1
+val_stride: 1
+
+# Loss Function Weights
+loss_alpha: 1.0   # Component MSE
+loss_beta: 0.5    # Speed MAE (wind pairs only)
+loss_gamma: 0.3   # Direction cosine (wind pairs only)
+
+# Learning Rate Scheduler
+scheduler_patience: 10
+scheduler_factor: 0.5
+
+# Early Stopping
+early_stopping_patience: 30
+
+# Save checkpoint every N epochs
+save_every: 10
