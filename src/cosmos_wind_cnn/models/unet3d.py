@@ -14,12 +14,13 @@ class Wind3DUNET(nn.Module):
     Output: (batch, out_channels, H, W)
     """
 
-    def __init__(self, in_channels, out_channels, base_channels=32):
+    def __init__(self, in_channels, out_channels, base_channels=32, dropout_rate=0.0):
         """
         Args:
             in_channels: Number of input channels (variables)
             out_channels: Number of output channels (predicted variables)
             base_channels: Base number of feature channels (will be multiplied)
+            dropout_rate: Dropout probability in each conv block (0 = disabled)
         """
         super(Wind3DUNET, self).__init__()
 
@@ -27,55 +28,58 @@ class Wind3DUNET(nn.Module):
         self.out_channels = out_channels
 
         # Encoder
-        self.enc1 = self.conv_block_3d(in_channels, base_channels)
-        self.enc2 = self.conv_block_3d(base_channels, base_channels*2)
-        self.enc3 = self.conv_block_3d(base_channels*2, base_channels*4)
-        self.enc4 = self.conv_block_3d(base_channels*4, base_channels*8)
+        self.enc1 = self.conv_block_3d(in_channels, base_channels, dropout_rate)
+        self.enc2 = self.conv_block_3d(base_channels, base_channels*2, dropout_rate)
+        self.enc3 = self.conv_block_3d(base_channels*2, base_channels*4, dropout_rate)
+        self.enc4 = self.conv_block_3d(base_channels*4, base_channels*8, dropout_rate)
 
         # Pool only spatially, not temporally
         self.pool = nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2))
 
         # Bottleneck
-        self.bottleneck = self.conv_block_3d(base_channels*8, base_channels*16)
+        self.bottleneck = self.conv_block_3d(base_channels*8, base_channels*16, dropout_rate)
 
         # Decoder
         self.up4 = nn.ConvTranspose3d(
             base_channels*16, base_channels*8,
             kernel_size=(1, 2, 2), stride=(1, 2, 2)
         )
-        self.dec4 = self.conv_block_3d(base_channels*16, base_channels*8)
+        self.dec4 = self.conv_block_3d(base_channels*16, base_channels*8, dropout_rate)
 
         self.up3 = nn.ConvTranspose3d(
             base_channels*8, base_channels*4,
             kernel_size=(1, 2, 2), stride=(1, 2, 2)
         )
-        self.dec3 = self.conv_block_3d(base_channels*8, base_channels*4)
+        self.dec3 = self.conv_block_3d(base_channels*8, base_channels*4, dropout_rate)
 
         self.up2 = nn.ConvTranspose3d(
             base_channels*4, base_channels*2,
             kernel_size=(1, 2, 2), stride=(1, 2, 2)
         )
-        self.dec2 = self.conv_block_3d(base_channels*4, base_channels*2)
+        self.dec2 = self.conv_block_3d(base_channels*4, base_channels*2, dropout_rate)
 
         self.up1 = nn.ConvTranspose3d(
             base_channels*2, base_channels,
             kernel_size=(1, 2, 2), stride=(1, 2, 2)
         )
-        self.dec1 = self.conv_block_3d(base_channels*2, base_channels)
+        self.dec1 = self.conv_block_3d(base_channels*2, base_channels, dropout_rate)
 
         # Output layer - predict for last timestep
         self.out = nn.Conv2d(base_channels, out_channels, kernel_size=1)
 
-    def conv_block_3d(self, in_ch, out_ch):
-        """3D convolutional block with BatchNorm and ReLU"""
-        return nn.Sequential(
+    def conv_block_3d(self, in_ch, out_ch, dropout_rate=0.0):
+        """3D convolutional block with BatchNorm, ReLU and optional Dropout"""
+        layers = [
             nn.Conv3d(in_ch, out_ch, kernel_size=3, padding=1),
             nn.BatchNorm3d(out_ch),
             nn.ReLU(inplace=True),
             nn.Conv3d(out_ch, out_ch, kernel_size=3, padding=1),
             nn.BatchNorm3d(out_ch),
-            nn.ReLU(inplace=True)
-        )
+            nn.ReLU(inplace=True),
+        ]
+        if dropout_rate > 0.0:
+            layers.append(nn.Dropout3d(p=dropout_rate))
+        return nn.Sequential(*layers)
 
     def match_size(self, x, target):
         """Match spatial dimensions of x to target by padding or cropping"""

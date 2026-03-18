@@ -1,0 +1,48 @@
+# Case Study Template - Inference Preprocessing Configuration
+#
+# Regrid coarse input data (ERA5, CMIP6, etc.) onto the target grid
+# for inference with a trained model.
+#
+# Copy this file when creating a new case study and update the source
+# files, variable names, and physical bounds for your domain.
+#
+# Usage:
+#   python scripts/preprocess_inference.py --case-study case_studies/my_study
+
+# ── Source files to regrid ───────────────────────────────────────────────────
+# Each entry maps an output variable name (must match the CNN's input_vars
+# from training.yaml) to a source file and variable name.
+#
+# For CMIP6 data, just change the filenames and source_var names.
+# The regridder is grid-agnostic — any rectilinear grid works.
+
+sources:
+  era5_u:
+    file: 'YOUR_LOW_RES_U_WIND.nc'
+    source_var: null          # null = auto-detect first variable in file
+  era5_v:
+    file: 'YOUR_LOW_RES_V_WIND.nc'
+    source_var: null
+  era5_temp:
+    file: 'YOUR_LOW_RES_TEMPERATURE.nc'
+    source_var: null
+  # Add more sources as needed...
+
+# ── Time period ──────────────────────────────────────────────────────────────
+# Set to null to use the full extent of each source file.
+start_date: null
+end_date: null
+
+# ── Interpolation method ────────────────────────────────────────────────────
+interpolation_method: 'linear'
+
+# ── Compression ─────────────────────────────────────────────────────────────
+compression_level: 1
+
+# ── Physical value bounds ───────────────────────────────────────────────────
+# Values outside [min, max] are replaced with NaN before interpolation.
+# Keys must match the output variable names above (era5_u, etc.).
+physical_bounds:
+  era5_u:    {min: -100, max: 100}
+  era5_v:    {min: -100, max: 100}
+  era5_temp: {min: 200,  max: 350}

@@ -35,6 +35,19 @@ def plot_sample_predictions(preds, targets, inputs, output_vars, coords, save_di
           f"temp: {temp_idx}, pressure: {pressure_idx}, radiation: {radiation_idx}")
     print(f"Output vars: {output_vars}")
 
+    # Track which variable indices have dedicated plot handlers
+    plotted_indices = set()
+    if wind_u_idx is not None:
+        plotted_indices.add(wind_u_idx)
+    if wind_v_idx is not None:
+        plotted_indices.add(wind_v_idx)
+    if temp_idx is not None:
+        plotted_indices.add(temp_idx)
+    if pressure_idx is not None:
+        plotted_indices.add(pressure_idx)
+    if radiation_idx is not None:
+        plotted_indices.add(radiation_idx)
+
     for idx in indices:
         pred = preds[idx]
         target = targets[idx]
@@ -60,6 +73,12 @@ def plot_sample_predictions(preds, targets, inputs, output_vars, coords, save_di
             _plot_scalar_sample(input_sample, target, pred, radiation_idx, 'Solar Radiation',
                                 'YlOrRd', 'W/m2', has_coords, extent, save_dir, idx,
                                 vmin_override=0)
+
+        # Any remaining variables not covered by the dedicated handlers above
+        for var_i, var_name in enumerate(output_vars):
+            if var_i not in plotted_indices:
+                _plot_scalar_sample(input_sample, target, pred, var_i, var_name,
+                                    'viridis', '', has_coords, extent, save_dir, idx)
 
 
 def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
@@ -165,31 +184,60 @@ def plot_error_distribution(preds, targets, output_vars, save_dir):
     axes = axes.flatten() if n_vars > 1 else axes
 
     for i, var_name in enumerate(output_vars):
-        error = (preds[:, i] - targets[:, i]).flatten().numpy()
-        target_flat = targets[:, i].flatten().numpy()
-        pred_flat = preds[:, i].flatten().numpy()
+        # Cast to float64 immediately to prevent float32 overflow when squaring large values
+        error = (preds[:, i] - targets[:, i]).flatten().double().numpy()
+        target_flat = targets[:, i].flatten().double().numpy()
+        pred_flat = preds[:, i].flatten().double().numpy()
+
+        # Mask out NaN/Inf (from masked pixels or denormalization overflow)
+        mask = np.isfinite(error) & np.isfinite(target_flat) & np.isfinite(pred_flat)
+        n_invalid = (~mask).sum()
+        error = error[mask]
+        target_flat = target_flat[mask]
+        pred_flat = pred_flat[mask]
+
+        ax = axes[i] if n_vars > 1 else axes
+
+        if len(error) == 0:
+            ax.set_title(f'{var_name}\n(all values invalid — check data masking)', fontsize=10)
+            ax.axis('off')
+            continue
 
         rmse = np.sqrt(np.mean(error ** 2))
         mae = np.mean(np.abs(error))
         bias = np.mean(error)
         ss_res = np.sum(error ** 2)
         ss_tot = np.sum((target_flat - np.mean(target_flat)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot)
-        corr = np.corrcoef(target_flat, pred_flat)[0, 1]
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else np.nan
+        corr = np.corrcoef(target_flat, pred_flat)[0, 1] if len(target_flat) > 1 else np.nan
         target_std = np.std(target_flat)
         scatter_index = rmse / target_std if target_std != 0 else np.nan
 
-        ax = axes[i] if n_vars > 1 else axes
-        ax.hist(error, bins=50, alpha=0.7, edgecolor='black', color='steelblue')
+        # Clip histogram to 1st–99th percentile so extreme outliers don't collapse the x-axis
+        p1, p99 = np.percentile(error, [1, 99])
+        error_clipped = error[(error >= p1) & (error <= p99)]
+        n_outliers = len(error) - len(error_clipped)
+
+        ax.hist(error_clipped, bins=50, alpha=0.7, edgecolor='black', color='steelblue')
         ax.axvline(0, color='red', linestyle='--', linewidth=2, label='Zero error')
-        ax.axvline(bias, color='orange', linestyle='--', linewidth=2, label=f'Bias: {bias:.3f}')
+        bias_label = f'Bias: {bias:.3f}' if np.isfinite(bias) else f'Bias: {bias}'
+        ax.axvline(np.clip(bias, p1, p99), color='orange', linestyle='--', linewidth=2,
+                   label=bias_label)
+        title_parts = []
+        if n_invalid > 0:
+            title_parts.append(f'{n_invalid:,} invalid pixels masked')
+        if n_outliers > 0:
+            title_parts.append(f'{n_outliers:,} outliers outside p1–p99')
+        if title_parts:
+            ax.set_title(f'{var_name} ({"; ".join(title_parts)})', fontsize=9, color='darkorange')
 
         textstr = (f'RMSE: {rmse:.4f}\nMAE: {mae:.4f}\nR2: {r_squared:.4f}\n'
-                   f'Corr: {corr:.4f}\nSI: {scatter_index:.4f}')
+                   f'Corr: {corr:.4f}\nSI: {scatter_index:.4f}\nN: {len(error):,}')
         ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=10,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-        ax.set_title(f'{var_name} Error Distribution', fontsize=12, fontweight='bold')
+        if n_invalid == 0:
+            ax.set_title(f'{var_name} Error Distribution', fontsize=12, fontweight='bold')
         ax.set_xlabel('Prediction Error')
         ax.set_ylabel('Frequency')
         ax.legend()
@@ -210,16 +258,28 @@ def plot_error_distribution(preds, targets, output_vars, save_dir):
     axes = axes.flatten() if n_vars > 1 else axes
 
     for i, var_name in enumerate(output_vars):
-        target_flat = targets[:, i].flatten().numpy()
-        pred_flat = preds[:, i].flatten().numpy()
+        # Cast to float64 to prevent overflow when squaring large values
+        target_flat = targets[:, i].flatten().double().numpy()
+        pred_flat = preds[:, i].flatten().double().numpy()
+
+        # Mask out NaN/Inf
+        mask = np.isfinite(target_flat) & np.isfinite(pred_flat)
+        target_flat = target_flat[mask]
+        pred_flat = pred_flat[mask]
+
+        ax = axes[i] if n_vars > 1 else axes
+
+        if len(target_flat) == 0:
+            ax.set_title(f'{var_name}\n(all values invalid)', fontsize=10)
+            ax.axis('off')
+            continue
 
         rmse = np.sqrt(np.mean((pred_flat - target_flat) ** 2))
-        r_squared = 1 - (np.sum((pred_flat - target_flat) ** 2) /
-                         np.sum((target_flat - np.mean(target_flat)) ** 2))
+        ss_tot = np.sum((target_flat - np.mean(target_flat)) ** 2)
+        r_squared = 1 - (np.sum((pred_flat - target_flat) ** 2) / ss_tot) if ss_tot != 0 else np.nan
         target_std = np.std(target_flat)
         scatter_index = rmse / target_std if target_std != 0 else np.nan
 
-        ax = axes[i] if n_vars > 1 else axes
         ax.hexbin(target_flat, pred_flat, gridsize=50, cmap='Blues', mincnt=1)
 
         min_val = min(target_flat.min(), pred_flat.min())
@@ -244,3 +304,153 @@ def plot_error_distribution(preds, targets, output_vars, save_dir):
     plt.tight_layout()
     plt.savefig(save_dir / 'scatter_plots.png', dpi=150, bbox_inches='tight')
     plt.close()
+
+
+def plot_normalization_stats(stats: dict, save_dir):
+    """
+    Plot mean ± std and min/max range for every variable in the normalization
+    stats dict.  Saves two horizontal bar charts side by side.
+
+    Args:
+        stats:    dict returned by NetCDFPreprocessor.calculate_and_save_stats
+                  {var_name: {'mean': float, 'std': float, 'min': float, 'max': float}}
+        save_dir: directory where 'normalization_stats.png' will be written
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    var_names = list(stats.keys())
+    means  = np.array([stats[v]['mean'] for v in var_names])
+    stds   = np.array([stats[v]['std']  for v in var_names])
+    mins   = np.array([stats[v]['min']  for v in var_names])
+    maxs   = np.array([stats[v]['max']  for v in var_names])
+    ranges = maxs - mins
+
+    n = len(var_names)
+    y = np.arange(n)
+    height = max(5, n * 0.55)
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, height))
+
+    # ── Panel 1: Mean ± Std ──────────────────────────────────────────────────
+    ax = axes[0]
+    bars = ax.barh(y, means, xerr=stds, align='center', height=0.6,
+                   color='steelblue', alpha=0.8,
+                   error_kw=dict(ecolor='black', capsize=4, linewidth=1.2))
+    ax.set_yticks(y)
+    ax.set_yticklabels(var_names, fontsize=10)
+    ax.axvline(0, color='black', linewidth=0.8, linestyle='--')
+    ax.set_xlabel('Value (raw units)', fontsize=10)
+    ax.set_title('Mean ± 1σ\n(training set)', fontweight='bold', fontsize=11)
+    ax.grid(True, axis='x', alpha=0.3)
+    # Annotate mean values
+    for bar, m, s in zip(bars, means, stds):
+        ax.text(bar.get_width() + s + 0.01 * abs(ax.get_xlim()[1] - ax.get_xlim()[0]),
+                bar.get_y() + bar.get_height() / 2,
+                f'{m:.3g}', va='center', ha='left', fontsize=8, color='dimgray')
+
+    # ── Panel 2: Standard Deviation ─────────────────────────────────────────
+    ax = axes[1]
+    bars = ax.barh(y, stds, align='center', height=0.6, color='coral', alpha=0.85)
+    ax.set_yticks(y)
+    ax.set_yticklabels(var_names, fontsize=10)
+    ax.set_xlabel('Standard deviation (raw units)', fontsize=10)
+    ax.set_title('Standard Deviation\n(training set)', fontweight='bold', fontsize=11)
+    ax.grid(True, axis='x', alpha=0.3)
+    for bar, s in zip(bars, stds):
+        ax.text(bar.get_width() * 1.01, bar.get_y() + bar.get_height() / 2,
+                f'{s:.3g}', va='center', ha='left', fontsize=8, color='dimgray')
+
+    # ── Panel 3: Min / Max range ─────────────────────────────────────────────
+    ax = axes[2]
+    # Horizontal range bars (broken barh from min to max)
+    ax.barh(y, ranges, left=mins, align='center', height=0.6,
+            color='mediumseagreen', alpha=0.75)
+    # Mark mean as a vertical tick inside the range
+    ax.scatter(means, y, color='black', zorder=5, s=30, label='Mean')
+    ax.set_yticks(y)
+    ax.set_yticklabels(var_names, fontsize=10)
+    ax.set_xlabel('Value (raw units)', fontsize=10)
+    ax.set_title('Min – Max range\n(▪ = mean)', fontweight='bold', fontsize=11)
+    ax.grid(True, axis='x', alpha=0.3)
+    for i_v, (lo, hi) in enumerate(zip(mins, maxs)):
+        ax.text(hi, i_v, f'  {hi:.3g}', va='center', ha='left', fontsize=7, color='dimgray')
+        ax.text(lo, i_v, f'{lo:.3g}  ', va='center', ha='right', fontsize=7, color='dimgray')
+
+    plt.suptitle('Normalization statistics — computed on training split',
+                 fontsize=13, fontweight='bold', y=1.01)
+    plt.tight_layout()
+    out_path = save_dir / 'normalization_stats.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved {out_path}")
+
+
+def plot_spatial_stats(train_ds, save_dir):
+    """
+    For each variable in the training dataset, compute the time-mean and
+    time-standard-deviation and save them as spatial map PNGs.
+
+    One file per variable is written to  <save_dir>/spatial_stats/<var>.png,
+    showing:
+      left panel  — time-mean field
+      right panel — temporal standard deviation field
+
+    Args:
+        train_ds: xarray.Dataset (may be dask-backed / lazy)
+        save_dir: root output directory (e.g. data/processed/)
+    """
+    out_dir = Path(save_dir) / 'spatial_stats'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Spatial coordinates (UTM metres if available)
+    x_coords = train_ds['x'].values if 'x' in train_ds.coords else None
+    y_coords = train_ds['y'].values if 'y' in train_ds.coords else None
+    has_coords = x_coords is not None and y_coords is not None
+
+    var_names = list(train_ds.data_vars)
+    print(f"  Saving spatial stats to {out_dir}/")
+
+    for var_name in var_names:
+        print(f"    {var_name} ...", end=" ", flush=True)
+        da = train_ds[var_name]
+
+        # Compute (triggers dask if lazy)
+        mean_field = da.mean(dim='time').values   # shape (y, x)
+        std_field  = da.std(dim='time').values    # shape (y, x)
+
+        fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+        panels = [
+            (axes[0], mean_field, 'Time Mean',          'RdBu_r'),
+            (axes[1], std_field,  'Temporal Std Dev',   'plasma'),
+        ]
+
+        for ax, field, title, cmap in panels:
+            n_nan = int(np.isnan(field).sum())
+
+            if has_coords:
+                im = ax.pcolormesh(x_coords, y_coords, field,
+                                   cmap=cmap, shading='auto')
+                ax.set_xlabel('Easting (m)', fontsize=9)
+                ax.set_ylabel('Northing (m)', fontsize=9)
+                ax.ticklabel_format(style='sci', axis='both', scilimits=(0, 0))
+            else:
+                im = ax.imshow(field, cmap=cmap, origin='lower', aspect='auto')
+                ax.set_xlabel('column index', fontsize=9)
+                ax.set_ylabel('row index', fontsize=9)
+
+            plt.colorbar(im, ax=ax, shrink=0.85, pad=0.03)
+            ax.set_aspect('equal', adjustable='box')
+
+            nan_note = f'\n({n_nan:,} NaN pixels)' if n_nan > 0 else ''
+            ax.set_title(f'{title}{nan_note}', fontsize=11, fontweight='bold')
+
+        plt.suptitle(f'{var_name}  —  spatial statistics (training split)',
+                     fontsize=12, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig(out_dir / f'{var_name}.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        print("done")
+
+    print(f"  All spatial stats saved to {out_dir}/")

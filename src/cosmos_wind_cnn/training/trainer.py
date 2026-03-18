@@ -8,7 +8,7 @@ from tqdm import tqdm
 from cosmos_wind_cnn.training.metrics import calculate_all_metrics
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, writer):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, writer, disable_tqdm=False):
     """Train for one epoch.
 
     Returns:
@@ -19,7 +19,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, writ
     running_loss = 0.0
     running_components = {}
 
-    pbar = tqdm(dataloader, desc=f'Epoch {epoch}')
+    pbar = tqdm(dataloader, desc=f'Epoch {epoch}', disable=disable_tqdm)
     for batch_idx, (inputs, targets) in enumerate(pbar):
         inputs = inputs.to(device)
         targets = targets.to(device)
@@ -85,8 +85,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, writ
         # Update progress bar
         pbar.set_postfix({'loss': f'{loss.item():.4f}'})
 
-        # Log to tensorboard every 100 batches
-        if batch_idx % 100 == 0:
+        # Log to tensorboard every 100 batches (writer is None on non-main ranks)
+        if writer is not None and batch_idx % 100 == 0:
             global_step = epoch * len(dataloader) + batch_idx
             writer.add_scalar('Train/batch_loss', loss.item(), global_step)
 
@@ -98,7 +98,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, writ
     return avg_loss, avg_components
 
 
-def validate(model, dataloader, criterion, device):
+def validate(model, dataloader, criterion, device, disable_tqdm=False):
     """Validate model.
 
     Returns:
@@ -114,7 +114,7 @@ def validate(model, dataloader, criterion, device):
     all_targets = []
 
     with torch.no_grad():
-        for inputs, targets in tqdm(dataloader, desc='Validating'):
+        for inputs, targets in tqdm(dataloader, desc='Validating', disable=disable_tqdm):
             inputs = inputs.to(device)
             targets = targets.to(device)
 

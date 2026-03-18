@@ -8,36 +8,44 @@ variable_pairs:
   wind_v:
     high_res: 'conus404_v'
     low_res: 'era5_v'
-  temperature:
-    high_res: 'conus404_temp'
-    low_res: 'era5_temp'
+  air_temperature:
+    high_res: 'conus404_air_temp'
+    low_res: 'era5_air_temp'
+  dew_point_temperature:
+    high_res: 'conus404_dew_temp'
+    low_res: 'era5_dew_temp'
   pressure:
     high_res: 'conus404_pressure'
     low_res: 'era5_pressure'
-  radiation:
-    high_res: 'conus404_radiation'
-    low_res: 'era5_radiation'
-
-# Additional input-only variables (used as context, not predicted)
-additional_inputs:
-  - 'cloud_area'
+  solar_radiation:
+    high_res: 'conus404_solar'
+    low_res: 'era5_solar'
+  thermal_radiation:
+    high_res: 'conus404_thermal'
+    low_res: 'era5_thermal'
+  rainfall:
+    high_res: 'conus404_rain'
+    low_res: 'era5_rain'
 
 # Model Architecture
-base_channels: 32
-sequence_length: 6
-forecast_horizon: 1
+# Statistical downscaling: learn ERA5 (coarse) → CONUS404 (fine)
+# Uses 6 hours of temporal context to inform downscaling at current timestep
+base_channels: 16
+sequence_length: 6    # 6 hours of context helps capture diurnal/weather patterns
+forecast_horizon: 0   # Same timestep output - downscaling, not forecasting
+dropout_rate: 0.1     # Dropout3d in each conv block — primary overfitting defence
 
 # Training Parameters
-batch_size: 8
+batch_size: 32        # was 16 — larger batch = smoother gradients; effective global = 128 with 4 GPUs
 num_epochs: 200
-learning_rate: 0.001
-weight_decay: 0.0001
-num_workers: 4
+learning_rate: 0.0003 # was 0.001 — lower LR for more stable convergence
+weight_decay: 0.001   # was 0.0001 — stronger L2 regularisation
+num_workers: 8
 
 # Data Loading
-load_in_memory: false
-train_stride: 1
-val_stride: 1
+load_in_memory: true  # always true on HPC — 384 GB RAM >> dataset size; NetCDF random-seek is the bottleneck
+train_stride: 1       # was 24 (testing only) — use all available samples for proper training
+val_stride: 6
 
 # Loss Function Weights
 loss_alpha: 1.0   # Component MSE
@@ -45,11 +53,11 @@ loss_beta: 0.5    # Speed MAE (wind pairs only)
 loss_gamma: 0.3   # Direction cosine (wind pairs only)
 
 # Learning Rate Scheduler
-scheduler_patience: 10
+scheduler_patience: 5   # was 10 — reduce LR faster when plateauing
 scheduler_factor: 0.5
 
 # Early Stopping
-early_stopping_patience: 30
+early_stopping_patience: 20  # was 30 — cleaner signal with more data, no need to wait as long
 
 # Save checkpoint every N epochs
 save_every: 10

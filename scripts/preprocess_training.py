@@ -5,12 +5,17 @@ Usage:
     python scripts/preprocess.py --case-study case_studies/sf_bay
 """
 
-import argparse
 import os
+# Fix OpenMP duplicate library error on Windows (must be before numpy/torch imports)
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+import argparse
 from pathlib import Path
 
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
+from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.utils.config import load_config
+from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
 
 
 def main():
@@ -37,7 +42,10 @@ def main():
     print(f"\nData directory: {data_dir}")
     print(f"Output directory: {output_dir}")
 
-    preprocessor = NetCDFPreprocessor({'data_dir': str(data_dir)})
+    preprocessor = NetCDFPreprocessor({
+        'data_dir': str(data_dir),
+        'physical_bounds': config.get('physical_bounds', {}),
+    })
 
     # Check files exist
     file_dict = config['file_dict']
@@ -51,11 +59,26 @@ def main():
     print("\n" + "=" * 70)
     print("Loading and combining datasets...")
     print("=" * 70)
-    combined_ds = preprocessor.load_and_align_datasets(file_dict)
+    start_date = config.get('start_date', None)
+    end_date   = config.get('end_date', None)
+    if start_date or end_date:
+        print(f"  Time period filter: {start_date or 'start'} to {end_date or 'end'}")
+    combined_ds = preprocessor.load_and_align_datasets(
+        file_dict, start_date=start_date, end_date=end_date
+    )
 
     print(f"\nCombined dataset:")
     print(f"  Variables: {list(combined_ds.data_vars)}")
     print(f"  Time steps: {len(combined_ds.time)}")
+
+    # Save target grid reference for inference-time regridding
+    # (tiny NetCDF with just y/x coordinate arrays -- ~100 KB)
+    print("\n" + "=" * 70)
+    print("Saving target grid reference...")
+    print("=" * 70)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    regridder = Regridder.from_target_dataset(combined_ds)
+    regridder.save_reference_grid(output_dir / 'target_grid_reference.nc')
 
     # Split
     print("\n" + "=" * 70)
@@ -85,14 +108,27 @@ def main():
         train_ds, output_dir / 'normalization_stats.pkl'
     )
 
+    # Visualise normalization statistics (scalar summary)
+    print("\n" + "=" * 70)
+    print("Plotting normalization statistics...")
+    print("=" * 70)
+    plot_normalization_stats(stats, output_dir)
+
+    # Visualise spatial statistics (time-mean and time-std per variable)
+    print("\n" + "=" * 70)
+    print("Plotting spatial statistics...")
+    print("=" * 70)
+    plot_spatial_stats(train_ds, output_dir)
+
     print("\n" + "=" * 70)
     print("Preprocessing Complete!")
     print("=" * 70)
     print(f"\nOutput files in: {output_dir}")
-    print(f"  train.nc      - {len(train_ds.time)} timesteps")
-    print(f"  val.nc        - {len(val_ds.time)} timesteps")
-    print(f"  test.nc       - {len(test_ds.time)} timesteps")
-    print(f"  normalization_stats.pkl - {len(stats)} variables")
+    print(f"  train.nc                 - {len(train_ds.time)} timesteps")
+    print(f"  val.nc                   - {len(val_ds.time)} timesteps")
+    print(f"  test.nc                  - {len(test_ds.time)} timesteps")
+    print(f"  normalization_stats.pkl  - {len(stats)} variables")
+    print(f"  target_grid_reference.nc - y/x coords for inference regridding")
     print(f"\nNext step: python scripts/train.py --case-study {case_dir}")
 
 

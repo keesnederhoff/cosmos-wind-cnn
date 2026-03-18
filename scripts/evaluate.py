@@ -5,6 +5,9 @@ Usage:
     python scripts/evaluate.py --case-study case_studies/sf_bay
 """
 
+#import os
+#os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 import argparse
 import json
 import os
@@ -32,22 +35,36 @@ def evaluate_model(model, dataloader, criterion, device, dataset, wind_pair_indi
     all_inputs = []
     all_losses = []
 
+    n_nan_outputs = 0
+
     with torch.no_grad():
         for inputs, targets in tqdm(dataloader, desc='Evaluating'):
             inputs = inputs.to(device)
             targets = targets.to(device)
+
             outputs = model(inputs)
+
+            # Safety net: detect NaN/Inf in model outputs (should not occur after dataset filtering)
+            batch_nan_outputs = (~torch.isfinite(outputs)).sum().item()
+            if batch_nan_outputs > 0:
+                n_nan_outputs += batch_nan_outputs
+                outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
+
             loss, _ = criterion(outputs, targets)
-            all_losses.append(loss.item())
+            all_losses.append(loss.item() if torch.isfinite(loss) else float('nan'))
             all_preds.append(outputs.cpu())
             all_targets.append(targets.cpu())
             all_inputs.append(inputs[:, -1, :, :, :].cpu())
+
+    if n_nan_outputs > 0:
+        print(f"WARNING: {n_nan_outputs:,} non-finite values in model outputs — "
+              f"replaced with 0 for metrics. Model may need more training.")
 
     all_preds = torch.cat(all_preds)
     all_targets = torch.cat(all_targets)
     all_inputs = torch.cat(all_inputs)
 
-    avg_loss = np.mean(all_losses)
+    avg_loss = np.nanmean(all_losses)
 
     # Calculate wind-specific metrics on the wind channels only
     if wind_pair_indices:
@@ -76,7 +93,10 @@ def _denormalize(data, var_list, dataset):
     """Denormalize data back to original scale."""
     denorm = torch.zeros_like(data)
     for i, var in enumerate(var_list):
-        denorm[:, i] = torch.from_numpy(dataset.denormalize(data[:, i].numpy(), var))
+        values = dataset.denormalize(data[:, i].numpy(), var)
+        # Replace any NaN/Inf that appeared during denormalization
+        values = np.nan_to_num(values, nan=np.nan, posinf=np.nan, neginf=np.nan)
+        denorm[:, i] = torch.from_numpy(values)
     return denorm
 
 
@@ -107,9 +127,12 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate trained model')
     parser.add_argument('--case-study', default='case_studies/sf_bay',
                         help='Path to case study directory')
+    parser.add_argument('--run-name', default='3663482',
+                        help='Run name matching the one used during training')
     args = parser.parse_args()
 
     case_dir = Path(args.case_study)
+    run_name = args.run_name
     config = load_config(case_dir / 'configs' / 'training.yaml')
 
     input_vars, output_vars, wind_pair_indices = parse_variable_config(config)
@@ -117,6 +140,7 @@ def main():
     print("=" * 70)
     print(f"Model Evaluation: {case_dir.name}")
     print("=" * 70)
+    print(f"Run name: {run_name}")
     print(f"\nInput variables: {input_vars}")
     print(f"Output variables: {output_vars}")
 
@@ -137,11 +161,11 @@ def main():
 
     test_loader = DataLoader(
         test_dataset, batch_size=config['batch_size'], shuffle=False,
-        num_workers=config['num_workers'], pin_memory=True,
+        num_workers=config['num_workers'], pin_memory=torch.cuda.is_available(),
     )
 
     # Load model
-    checkpoint_path = case_dir / 'checkpoints' / 'best_model.pth'
+    checkpoint_path = case_dir / 'checkpoints' / run_name / 'best_model.pth'
     if not checkpoint_path.exists():
         print(f"Error: Checkpoint not found at {checkpoint_path}")
         return
@@ -151,6 +175,7 @@ def main():
         in_channels=len(input_vars),
         out_channels=len(output_vars),
         base_channels=config.get('base_channels', 32),
+        dropout_rate=config.get('dropout_rate', 0.0),
     ).to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded model from epoch {checkpoint['epoch']}")
@@ -177,8 +202,8 @@ def main():
     for key, value in metrics.items():
         print(f"  {key}: {value:.4f}")
 
-    # Save
-    output_dir = case_dir / 'outputs' / 'evaluation'
+    # Save — namespaced by run_name so multiple runs don't overwrite each other
+    output_dir = case_dir / 'outputs' / run_name / 'evaluation'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = {
