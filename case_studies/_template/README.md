@@ -32,4 +32,10 @@
    python scripts/evaluate.py --case-study case_studies/my_study --run-name first_run
    ```
 
+   Or quick standalone scripts (local experiments, not run-isolated):
+   ```bash
+   python scripts/preprocess.py --case-study case_studies/my_study
+   python scripts/inference.py --case-study case_studies/my_study
+   ```
+
 All outputs are saved under `results/<run_name>/` (checkpoint, processed data, logs, inference, evaluation).

@@ -45,6 +45,20 @@ python scripts/run_inference.py \
     --end-date 2026-12-31
 ```
 
+### Quick per-step scripts (local experiments)
+
+Lightweight standalone alternatives to the run-isolated pipeline above:
+
+```bash
+python scripts/preprocess.py --case-study case_studies/sf_bay
+python scripts/train.py      --case-study case_studies/sf_bay
+python scripts/evaluate.py   --case-study case_studies/sf_bay
+python scripts/inference.py  --case-study case_studies/sf_bay
+```
+
+For reproducible runs prefer `run_training_pipeline.py`, which isolates every
+artifact under `results/<run_name>/`.
+
 ### HPC (SLURM on Tallgrass)
 
 ```bash
