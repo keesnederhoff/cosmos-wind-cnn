@@ -2,6 +2,7 @@
 Configuration parsing utilities
 """
 
+import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -37,7 +38,11 @@ def get_run_dirs(case_dir, run_name: str) -> dict:
         output_evaluation– results/<run_name>/output_evaluation/
     """
     case_dir = Path(case_dir)
-    run_root = case_dir / 'results' / str(run_name)
+    _results_root = os.environ.get('COSMOS_RESULTS_ROOT')
+    if _results_root:
+        run_root = Path(_results_root) / case_dir.name / str(run_name)
+    else:
+        run_root = case_dir / 'results' / str(run_name)
     return {
         'run_root':          run_root,
         'checkpoint':        run_root / 'checkpoint',
@@ -152,3 +157,17 @@ def wind_var_names(variable_pairs):
     if all(k in out for k in ('u_target', 'v_target', 'u_input', 'v_input')):
         return out['u_target'], out['v_target'], out['u_input'], out['v_input']
     return None
+
+
+def get_data_dir(case_dir):
+    """Directory holding a case study's raw NetCDF inputs.
+
+    Configurable so raw data can live off /home (e.g. on /caldera):
+      * COSMOS_DATA_ROOT env var (or pipeline --data-root) -> <root>/<case_name>/raw
+      * otherwise the in-repo default                      -> <case_dir>/data/raw
+    """
+    case_dir = Path(case_dir)
+    root = os.environ.get('COSMOS_DATA_ROOT')
+    if root:
+        return Path(root) / case_dir.name / 'raw'
+    return case_dir / 'data' / 'raw'

@@ -31,6 +31,7 @@ import json
 import pickle
 import shutil
 import subprocess
+import netCDF4
 import sys
 import time
 from datetime import timedelta
@@ -47,7 +48,7 @@ from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
 from cosmos_wind_cnn.utils.config import (
-    load_config, parse_variable_config, get_run_dirs, var_units_for, wind_var_names,
+    load_config, parse_variable_config, get_run_dirs, get_data_dir, var_units_for, wind_var_names,
 )
 from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
 
@@ -59,7 +60,7 @@ from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_s
 def step_preprocess(case_dir, run_dirs):
     """Load raw data, align, split, save stats and reference grid."""
     config = load_config(case_dir / 'configs' / 'preprocessing.yaml')
-    data_dir = case_dir / 'data' / 'raw'
+    data_dir = get_data_dir(case_dir)
     output_dir = run_dirs['data_processed']
 
     preprocessor = NetCDFPreprocessor({
@@ -276,9 +277,7 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     for var_name in regridded_vars:
         regridded_vars[var_name] = regridded_vars[var_name].sel(time=common_times)
 
-    full_ds = xr.Dataset(regridded_vars)[input_vars]
-    print("    Loading into memory...")
-    full_ds.load()
+    full_ds = xr.Dataset(regridded_vars)[input_vars]   # kept lazy; loaded per time-chunk
 
     n_total = len(full_ds.time)
     time_coords = full_ds.time.values
@@ -302,79 +301,92 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     model.eval()
     print(f"    Model loaded from epoch {checkpoint['epoch']}")
 
-    # -- Inference --
-    dataset = _SlidingWindowDataset(full_ds, input_vars, stats, sequence_length)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=num_workers,
-                        pin_memory=torch.cuda.is_available())
-
-    target_offset = sequence_length - 1
-    pred_arrays = {
-        var: np.full((n_total, height, width), np.nan, dtype=np.float32)
-        for var in output_vars
-    }
-
-    n_nan_outputs = 0
-    with torch.no_grad():
-        for batch_inputs, batch_starts in tqdm(loader, desc='    Inference'):
-            outputs = model(batch_inputs.to(device))
-            batch_nan = (~torch.isfinite(outputs)).sum().item()
-            if batch_nan > 0:
-                n_nan_outputs += batch_nan
-                outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
-            outputs = outputs.cpu().numpy()
-            for b, start in enumerate(batch_starts.numpy()):
-                t = int(start) + target_offset
-                for c, var in enumerate(output_vars):
-                    mean, std = stats[var]['mean'], stats[var]['std']
-                    pred_arrays[var][t] = outputs[b, c] * (std + 1e-8) + mean
-
-    if n_nan_outputs > 0:
-        print(f"    WARNING: {n_nan_outputs:,} non-finite outputs replaced with 0.")
-
-    # -- Save --
+    # -- Prepare streamed output file (RAM stays bounded: one time-chunk at a time) --
     tag_start = (start_date or str(common_times[0])[:10]).replace('-', '')
     tag_end = (end_date or str(common_times[-1])[:10]).replace('-', '')
     output_filename = f'full_record_ERA5_{tag_start}_{tag_end}.nc'
     output_path = run_dirs['output_inference'] / output_filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
     if output_path.exists():
         output_path.unlink()
 
     VAR_UNITS = var_units_for(output_vars)
+    target_offset = sequence_length - 1
+    time_chunk = int(inf_config.get('inference_time_chunk', 10000))
 
-    coords = {'time': time_coords}
+    epoch0 = np.datetime64('1900-01-01T00:00:00')
+    time_hours = (time_coords.astype('datetime64[ns]') - epoch0) / np.timedelta64(1, 'h')
+
+    nc = netCDF4.Dataset(str(output_path), 'w', format='NETCDF4')
+    nc.createDimension('time', n_total)
+    nc.createDimension('y', height)
+    nc.createDimension('x', width)
+    tv = nc.createVariable('time', 'f8', ('time',))
+    tv.units = 'hours since 1900-01-01'
+    tv.calendar = 'gregorian'
+    tv[:] = time_hours
     if y_coords is not None:
-        coords['y'] = ('y', y_coords)
+        nc.createVariable('y', 'f8', ('y',))[:] = y_coords
     if x_coords is not None:
-        coords['x'] = ('x', x_coords)
-
-    ds_out = xr.Dataset(
-        {var: (['time', 'y', 'x'], pred_arrays[var]) for var in output_vars},
-        coords=coords,
-    )
-    for coord in ('time', 'x', 'y'):
-        if coord in full_ds.coords and coord in ds_out.coords:
-            ds_out[coord].attrs.update(full_ds[coord].attrs)
+        nc.createVariable('x', 'f8', ('x',))[:] = x_coords
+    t_chunk_nc = max(1, min(720, n_total))
+    out_nc = {}
     for var in output_vars:
+        v = nc.createVariable(var, 'f4', ('time', 'y', 'x'), zlib=True, complevel=1,
+                              chunksizes=(t_chunk_nc, height, width),
+                              fill_value=np.float32(np.nan))
         if var in VAR_UNITS:
-            ds_out[var].attrs['units'] = VAR_UNITS[var]
-    ds_out.attrs['source_checkpoint'] = str(checkpoint_path)
-    ds_out.attrs['checkpoint_epoch'] = int(checkpoint['epoch'])
-    ds_out.attrs['run_name'] = run_dirs['run_root'].name
-    ds_out.attrs['sequence_length'] = sequence_length
+            v.units = VAR_UNITS[var]
+        out_nc[var] = v
+    nc.source_checkpoint = str(checkpoint_path)
+    nc.checkpoint_epoch = int(checkpoint['epoch'])
+    nc.run_name = run_dirs['run_root'].name
+    nc.sequence_length = int(sequence_length)
     if 'crs' in train_config:
-        ds_out.attrs['crs'] = train_config['crs']
+        nc.crs = str(train_config['crs'])
 
-    encoding = {var: {'zlib': True, 'complevel': 1} for var in output_vars}
-    encoding['time'] = {'dtype': 'float64', 'units': 'hours since 1900-01-01',
-                        'calendar': 'gregorian'}
-    ds_out.to_netcdf(output_path, encoding=encoding)
+    # -- Streamed inference: iterate over blocks of sliding-window start indices --
+    n_windows = max(0, n_total - sequence_length + 1)
+    n_predicted = 0
+    n_nan_outputs = 0
+    print(f"    Streaming inference over {n_windows:,} windows "
+          f"in chunks of {time_chunk:,} (grid {height}x{width})...")
+    with torch.no_grad():
+        for s0 in tqdm(range(0, n_windows, time_chunk), desc='    Inference'):
+            e0 = min(s0 + time_chunk, n_windows)          # window-starts [s0, e0)
+            in_hi = min(e0 + target_offset, n_total)       # input rows [s0, in_hi)
+            block = full_ds.isel(time=slice(s0, in_hi)).load()
+            ds_block = _SlidingWindowDataset(block, input_vars, stats, sequence_length)
+            pred_block = {var: np.full((e0 - s0, height, width), np.nan, dtype=np.float32)
+                          for var in output_vars}
+            if len(ds_block) > 0:
+                loader = DataLoader(ds_block, batch_size=batch_size, shuffle=False,
+                                    num_workers=num_workers,
+                                    pin_memory=torch.cuda.is_available())
+                for batch_inputs, batch_starts in loader:
+                    outputs = model(batch_inputs.to(device))
+                    bnan = (~torch.isfinite(outputs)).sum().item()
+                    if bnan > 0:
+                        n_nan_outputs += bnan
+                        outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
+                    outputs = outputs.cpu().numpy()
+                    for b, local_start in enumerate(batch_starts.numpy()):
+                        j = int(local_start)               # block-local window-start
+                        for c, var in enumerate(output_vars):
+                            mean, std = stats[var]['mean'], stats[var]['std']
+                            pred_block[var][j] = outputs[b, c] * (std + 1e-8) + mean
+                del loader
+            t0 = s0 + target_offset
+            t1 = e0 + target_offset
+            for var in output_vars:
+                out_nc[var][t0:t1, :, :] = pred_block[var]
+            n_predicted += int(np.isfinite(
+                next(iter(pred_block.values()))).any(axis=(1, 2)).sum())
+            del block, ds_block, pred_block
 
-    n_predicted = int(np.isfinite(
-        next(iter(pred_arrays.values()))
-    ).any(axis=(1, 2)).sum())
+    nc.close()
+    if n_nan_outputs > 0:
+        print(f"    WARNING: {n_nan_outputs:,} non-finite outputs replaced with 0.")
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"\n    Saved: {output_path} ({size_mb:.1f} MB)")
     print(f"    Predicted: {n_predicted:,} / {n_total:,} timesteps")
@@ -401,7 +413,7 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     u_tgt, v_tgt, u_in, v_in = names
 
     # Load inference and processed data
-    inference_ds = xr.open_dataset(inference_path, chunks={'time': 500})
+    inference_ds = xr.open_dataset(inference_path, chunks='auto')
 
     splits = []
     for name in ('train', 'val', 'test'):
@@ -446,22 +458,36 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     all_records = []
     running_ss = []
 
+    # Single-pass vectorized extraction of all sampled points, restricted to the
+    # evaluation overlap window. The model output spans the full ERA5 record
+    # (1940-2027) but eval only needs the common period (where the high-res
+    # target exists), so we read just that time-slice -- far less I/O.
+    inf_lo = int(inf_idx.min())
+    inf_hi = int(inf_idx.max()) + 1
+    inf_idx_rel = inf_idx - inf_lo
+    inf_sub = inference_ds.isel(time=slice(inf_lo, inf_hi))
+    pts_y = xr.DataArray(iys, dims='points')
+    pts_x = xr.DataArray(ixs, dims='points')
+    print(f'    Extracting {n_points} points over {inf_hi - inf_lo} overlap steps (single pass)...')
+    mod_u_all = inf_sub[u_tgt].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    mod_v_all = inf_sub[v_tgt].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    tru_u_all = processed_ds[u_tgt].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    tru_v_all = processed_ds[v_tgt].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    e5_u_all = processed_ds[u_in].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    e5_v_all = processed_ds[v_in].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+
     for pt, (iy, ix) in enumerate(tqdm(zip(iys, ixs),
                                         total=n_points,
                                         desc='    Grid points')):
         iy, ix = int(iy), int(ix)
 
-        # Model predictions
-        mod_u = inference_ds[u_tgt].isel(y=iy, x=ix).values[inf_idx].astype(float)
-        mod_v = inference_ds[v_tgt].isel(y=iy, x=ix).values[inf_idx].astype(float)
-
-        # High-res truth (target)
-        tru_u = processed_ds[u_tgt].isel(y=iy, x=ix).values[proc_idx].astype(float)
-        tru_v = processed_ds[v_tgt].isel(y=iy, x=ix).values[proc_idx].astype(float)
-
-        # ERA5 (coarse input)
-        e5_u = processed_ds[u_in].isel(y=iy, x=ix).values[proc_idx].astype(float)
-        e5_v = processed_ds[v_in].isel(y=iy, x=ix).values[proc_idx].astype(float)
+        # Indexed from pre-extracted (time, points) arrays (single-pass read above)
+        mod_u = mod_u_all[inf_idx_rel, pt].astype(float)
+        mod_v = mod_v_all[inf_idx_rel, pt].astype(float)
+        tru_u = tru_u_all[proc_idx, pt].astype(float)
+        tru_v = tru_v_all[proc_idx, pt].astype(float)
+        e5_u = e5_u_all[proc_idx, pt].astype(float)
+        e5_v = e5_v_all[proc_idx, pt].astype(float)
 
         # Wind speed
         mod_ws = np.sqrt(mod_u**2 + mod_v**2)
@@ -546,6 +572,12 @@ def main():
         description='Full training pipeline: preprocess -> train -> inference -> evaluate'
     )
     parser.add_argument('--case-study', default='case_studies/sf_bay')
+    parser.add_argument('--data-root', default=None,
+                        help='Base dir for raw input data; reads <data-root>/<case_name>/raw. '
+                             'Overrides COSMOS_DATA_ROOT. Default: <case-study>/data/raw')
+    parser.add_argument('--results-root', default=None,
+                        help='Base dir for run outputs; writes <results-root>/<case_name>/<run-name>. '
+                             'Overrides COSMOS_RESULTS_ROOT. Default: <case-study>/results')
     parser.add_argument('--run-name', default='default',
                         help='Name for this run (used for checkpoint/output dirs)')
     parser.add_argument('--gpus', type=int, default=1,
@@ -569,6 +601,13 @@ def main():
     parser.add_argument('--skip-eval', action='store_true',
                         help='Skip grid point evaluation')
     args = parser.parse_args()
+
+    # Explicit path overrides (callable from CLI/Python). Set env vars so every
+    # downstream helper (get_run_dirs / get_data_dir) picks up the same location.
+    if args.data_root:
+        os.environ['COSMOS_DATA_ROOT'] = args.data_root
+    if args.results_root:
+        os.environ['COSMOS_RESULTS_ROOT'] = args.results_root
 
     case_dir = Path(args.case_study)
     run_name = args.run_name
@@ -635,6 +674,12 @@ def main():
         print(f"\n  Step 4 completed in {timedelta(seconds=int(time.time() - t0))}")
     else:
         print("\n  Step 4: Inference -- SKIPPED")
+        inf_dir = run_dirs['output_inference']
+        if inf_dir.exists():
+            cands = sorted(inf_dir.glob('full_record_*.nc'))
+            if cands:
+                inference_path = max(cands, key=lambda p: p.stat().st_size)
+                print(f"    Using existing inference output: {inference_path}")
 
     # ── Step 5: Evaluate vs CONUS404 ──────────────────────────────────────
     if not args.skip_eval and inference_path is not None:
