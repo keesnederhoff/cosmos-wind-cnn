@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cosmos-wind-cnn"
 version = "0.1.0"
-description = "3D U-Net for statistical downscaling of meteorological variables from ERA5 to CONUS404 resolution"
+description = "3D U-Net for statistical downscaling of meteorological variables from coarse reanalysis to high-resolution fields"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}

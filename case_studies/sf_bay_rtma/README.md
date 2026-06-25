@@ -24,7 +24,7 @@ CONUS404-based `sf_bay`).
 | Precipitation | precipitation | tp |
 
 No shortwave/longwave radiation (RTMA has none). RTMA precipitation skill for
-extremes is uncertain — validate `rtma_rain` against gauges before using it for
+extremes is uncertain — validate `hr_rain` against gauges before using it for
 compound-flood forcing.
 
 ## Usage

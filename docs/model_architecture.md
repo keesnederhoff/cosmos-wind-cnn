@@ -8,10 +8,10 @@ The model is a 3D U-Net (`Wind3DUNET`) that processes spatiotemporal sequences o
 
 - **Input**: `(batch, sequence_length, n_input_vars, height, width)`
   - `sequence_length`: Number of input timesteps (default: 6)
-  - `n_input_vars`: Low-resolution variables (e.g., ERA5 u, v, temp, pressure, radiation, cloud cover)
+  - `n_input_vars`: Low-resolution (LR) variables (e.g., lr_u, lr_v, lr_air_temp, lr_pressure, lr_solar, cloud cover)
 
 - **Output**: `(batch, n_output_vars, height, width)`
-  - `n_output_vars`: High-resolution target variables (e.g., CONUS404 u, v, temp, pressure, radiation)
+  - `n_output_vars`: High-resolution (HR) target variables (e.g., hr_u, hr_v, hr_air_temp, hr_pressure, hr_solar)
 
 ## Architecture
 

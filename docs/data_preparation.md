@@ -1,6 +1,6 @@
 # Data Preparation
 
-This document describes how to prepare ERA5 and CONUS404 data for use with the wind downscaling CNN.
+This document describes how to prepare ERA5 and CONUS404 data for use with the wind downscaling CNN. ERA5 serves as the low-resolution (LR) input and CONUS404 as the high-resolution (HR) target for the SF Bay and Puget Sound case studies; the same steps apply for other LR/HR dataset pairs.
 
 ## Overview
 
@@ -13,7 +13,7 @@ The CNN expects all input and target data on the **same spatial grid** in a proj
 
 ## Source Datasets
 
-### ERA5 Reanalysis (~31 km)
+### ERA5 Reanalysis (~31 km) — low-resolution (LR) input
 
 - Source: [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/)
 - Variables: 10m U/V wind, 2m temperature, surface pressure, solar radiation, cloud cover
@@ -21,7 +21,7 @@ The CNN expects all input and target data on the **same spatial grid** in a proj
 - Spatial resolution: ~0.25 deg (~31 km)
 - Coverage: 1940-present
 
-### CONUS404 (4 km)
+### CONUS404 (4 km) — high-resolution (HR) target
 
 - Source: [USGS CONUS404 on AWS / ScienceBase](https://www.sciencebase.gov/catalog/item/6372ab09d34e4844940b59c3)
 - Variables: Wind, temperature, pressure, radiation at 4 km resolution

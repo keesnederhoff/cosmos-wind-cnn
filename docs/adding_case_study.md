@@ -26,8 +26,8 @@ When you run the pipeline, a `results/<run_name>/` directory is created automati
 
 Follow the pipeline in [data_preparation.md](data_preparation.md):
 
-1. Convert CONUS404 data to your target UTM grid
-2. Interpolate ERA5 data to the same grid
+1. Convert your high-resolution (HR) target data to your target UTM grid
+2. Interpolate your low-resolution (LR) input data to the same grid
 3. Place all NetCDF files in `case_studies/my_study/data/raw/`
 
 Requirements:
@@ -41,10 +41,10 @@ Edit `case_studies/my_study/configs/preprocessing.yaml`:
 
 ```yaml
 file_dict:
-  conus404_u: 'your_high_res_u_wind.nc'
-  era5_u: 'your_low_res_u_wind.nc'
-  conus404_v: 'your_high_res_v_wind.nc'
-  era5_v: 'your_low_res_v_wind.nc'
+  hr_u: 'your_high_res_u_wind.nc'
+  lr_u: 'your_low_res_u_wind.nc'
+  hr_v: 'your_high_res_v_wind.nc'
+  lr_v: 'your_low_res_v_wind.nc'
   # ... add all variable pairs
 
 train_ratio: 0.7
@@ -52,30 +52,43 @@ val_ratio: 0.15
 test_ratio: 0.15
 ```
 
-The variable keys (e.g., `conus404_u`, `era5_u`) must match the keys used in the training config's `variable_pairs`.
+The variable keys (e.g., `hr_u`, `lr_u`) must match the keys used in the training config's `variable_pairs`.
+All keys use the `hr_` prefix for the high-resolution target and `lr_` for the low-resolution input —
+this convention is dataset-agnostic (CONUS404, RTMA, ERA5, CMIP6, or any other source).
 
-### Optional: non-CONUS404 targets and gappy products
+### Optional: gappy data products
 
-The pipeline defaults to `conus404_` (target) and `era5_` (input) key prefixes. To use a
-different high-resolution target product, set the prefixes explicitly in
-`preprocessing.yaml`:
+If your HR data product has missing hours (e.g. RTMA, with ~1% missing), set:
 
 ```yaml
-target_prefix: 'rtma_'        # high-resolution reference grid
-input_prefix: 'era5_'         # coarse input
 regular_time_grid: true       # reindex onto a complete hourly axis, NaN-filling gaps
 ```
 
-`regular_time_grid` is needed for products with missing hours (e.g. RTMA): missing
-timestamps become NaN rows, which the dataset's NaN-window dropping then excludes, so no
-sequence window silently spans a time gap. See `case_studies/sf_bay_rtma` for a worked
-example (RTMA 2.5 km target).
+This reindexes onto a complete hourly axis before splitting. Missing timestamps become NaN rows,
+which the dataset's NaN-window dropping then excludes, so no sequence window silently spans a time gap.
+See `case_studies/sf_bay_rtma` for a worked example (RTMA 2.5 km HR target / ERA5 LR input).
 
 ## 4. Configure training
 
 Edit `case_studies/my_study/configs/training.yaml`:
 
-- Update `variable_pairs` to match your preprocessing keys
+- Set `hr_source` and `lr_source` to record the actual datasets used (provenance labels, e.g.
+  `hr_source: CONUS404` / `lr_source: ERA5`). These do not affect model behavior but are
+  archived with the run for reproducibility.
+- Update `variable_pairs` to match your preprocessing keys, mapping `high_res:` / `low_res:`
+  values to the `hr_` / `lr_` keys defined in your preprocessing config:
+  ```yaml
+  hr_source: CONUS404
+  lr_source: ERA5
+  variable_pairs:
+    wind_u:
+      high_res: 'hr_u'
+      low_res:  'lr_u'
+    wind_v:
+      high_res: 'hr_v'
+      low_res:  'lr_v'
+    # ... all pairs
+  ```
 - Adjust `batch_size` based on your GPU memory and grid size
 - Consider reducing `base_channels` if GPU memory is limited
 - Tune `sequence_length` based on the temporal autocorrelation of your data
