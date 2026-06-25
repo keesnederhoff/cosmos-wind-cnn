@@ -28,7 +28,7 @@
 | Path | Action | Why |
 |------|--------|-----|
 | `.gitignore` | **Modify** | Add `**/results/**` ignore — `results/` is 158 GB of per-run outputs and is currently untracked. **Must precede any `git add`.** |
-| `src/cosmos_wind_cnn/utils/config.py` | **Overwrite ← HPC** | Adds `get_data_dir()` + `COSMOS_DATA_ROOT`/`COSMOS_RESULTS_ROOT` env support. Verified additive (no local-only function lost). |
+| `src/cosmos_wind_cnn/utils/config.py` | **Surgical merge** | Add ONLY `import os` + `COSMOS_RESULTS_ROOT` branch in `get_run_dirs` + new `get_data_dir()`. **Do NOT copy wholesale** — the HPC copy would delete `classify_file_keys` and revert `var_units_for`/`wind_var_names`, which local has improved and which `preprocessing.py` + tests depend on. |
 | `scripts/run_training_pipeline.py` | **Overwrite ← HPC** | Streamed NetCDF inference (bounded RAM) + vectorized eval extraction + `get_data_dir`. Coupled with config.py. |
 | `scripts/preprocess.py` | **Create ← HPC** | New simple standalone preprocessing entry point. |
 | `scripts/inference.py` | **Create ← HPC** | New simple standalone inference entry point. |
@@ -128,28 +128,64 @@ Expected: a readable summary of the pre-existing working-tree changes. (These pr
 ### Task 1: Caldera storage roots + streaming inference (coupled `config.py` + `run_training_pipeline.py`)
 
 **Files:**
-- Overwrite: `/d/Git/cosmos-wind-cnn/src/cosmos_wind_cnn/utils/config.py` ← dump
-- Overwrite: `/d/Git/cosmos-wind-cnn/scripts/run_training_pipeline.py` ← dump
+- **Surgical-edit (keep local):** `/d/Git/cosmos-wind-cnn/src/cosmos_wind_cnn/utils/config.py`
+- Overwrite ← dump: `/d/Git/cosmos-wind-cnn/scripts/run_training_pipeline.py`
 - Test: `/d/Git/cosmos-wind-cnn/tests/test_config_helpers.py` (existing)
 
-- [ ] **Step 1: Copy both HPC files over local**
+> **Why surgical, not wholesale:** copying the HPC `config.py` over local would DELETE `classify_file_keys` (used by `data/preprocessing.py:11,93` and tested) and REVERT `var_units_for`/`wind_var_names` to older versions the tests no longer expect. Local's helpers are newer. So keep local `config.py` and add ONLY the three caldera additions. The HPC `run_training_pipeline.py` is fine to take wholesale (it uses `get_data_dir`/`var_units_for`/`wind_var_names`, never `classify_file_keys`).
+
+- [ ] **Step 1: Copy ONLY the pipeline; keep local config.py**
 
 Run:
 ```bash
 HPC=/g/03-downscaling_meteo_cnn/dump-cosmos-wind-cnn; LOC=/d/Git/cosmos-wind-cnn
-cp "$HPC/src/cosmos_wind_cnn/utils/config.py"        "$LOC/src/cosmos_wind_cnn/utils/config.py"
-cp "$HPC/scripts/run_training_pipeline.py"           "$LOC/scripts/run_training_pipeline.py"
+cp "$HPC/scripts/run_training_pipeline.py" "$LOC/scripts/run_training_pipeline.py"
+cd "$LOC" && git status --short      # expect only run_training_pipeline.py modified
 ```
 
-- [ ] **Step 2: Confirm the change is exactly the expected additive delta in config.py**
+- [ ] **Step 2: Apply THREE surgical edits to `src/cosmos_wind_cnn/utils/config.py`**
 
-Run:
+Edit A — add `import os` (old `import yaml\nfrom pathlib import Path` → prepend `import os`).
+
+Edit B — `get_run_dirs`: replace
+```python
+    run_root = case_dir / 'results' / str(run_name)
+    return {
+```
+with
+```python
+    _results_root = os.environ.get('COSMOS_RESULTS_ROOT')
+    if _results_root:
+        run_root = Path(_results_root) / case_dir.name / str(run_name)
+    else:
+        run_root = case_dir / 'results' / str(run_name)
+    return {
+```
+
+Edit C — append at end of file:
+```python
+
+
+def get_data_dir(case_dir):
+    """Directory holding a case study's raw NetCDF inputs.
+
+    Configurable so raw data can live off /home (e.g. on /caldera):
+      * COSMOS_DATA_ROOT env var (or pipeline --data-root) -> <root>/<case_name>/raw
+      * otherwise the in-repo default                      -> <case_dir>/data/raw
+    """
+    case_dir = Path(case_dir)
+    root = os.environ.get('COSMOS_DATA_ROOT')
+    if root:
+        return Path(root) / case_dir.name / 'raw'
+    return case_dir / 'data' / 'raw'
+```
+
+Verify additions-only and helpers intact:
 ```bash
 cd /d/Git/cosmos-wind-cnn
-git --no-pager diff --stat src/cosmos_wind_cnn/utils/config.py
-git --no-pager diff src/cosmos_wind_cnn/utils/config.py | grep -E "^\+" | grep -E "import os|COSMOS_RESULTS_ROOT|COSMOS_DATA_ROOT|def get_data_dir"
+grep -nE "^def (classify_file_keys|var_units_for|wind_var_names|get_data_dir|get_run_dirs)|^import os|COSMOS_RESULTS_ROOT|_UNIT_BY_SUFFIX" src/cosmos_wind_cnn/utils/config.py
 ```
-Expected: the added lines include `import os`, a `COSMOS_RESULTS_ROOT` branch in `get_run_dirs`, and a new `def get_data_dir`. No unrelated deletions of other helper functions.
+Expected: all of `classify_file_keys`, `_UNIT_BY_SUFFIX`, `var_units_for`, `wind_var_names`, `get_run_dirs`, `import os`, `COSMOS_RESULTS_ROOT`, `get_data_dir` present.
 
 - [ ] **Step 3: Verify the package imports and the new helpers exist**
 
