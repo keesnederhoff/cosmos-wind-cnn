@@ -215,7 +215,7 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
                    num_workers):
     """Regrid ERA5 onto target grid and run trained model."""
     processed_dir = run_dirs['data_processed']
-    data_dir = case_dir / 'data' / 'raw'
+    data_dir = get_data_dir(case_dir)
     checkpoint_dir = run_dirs['checkpoint']
 
     # Load archived configs (from checkpoint dir for reproducibility)
