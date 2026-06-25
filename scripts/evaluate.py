@@ -218,7 +218,9 @@ def main():
 
     print("\nGenerating visualizations...")
     plot_sample_predictions(preds, targets, inputs, output_vars, coords,
-                            output_dir / 'samples', n_samples=5)
+                            output_dir / 'samples', n_samples=5,
+                            hr_label=config.get('hr_source', 'HR'),
+                            lr_label=config.get('lr_source', 'LR'))
     plot_error_distribution(preds, targets, output_vars, output_dir)
 
     print(f"\nResults saved to: {output_dir}")

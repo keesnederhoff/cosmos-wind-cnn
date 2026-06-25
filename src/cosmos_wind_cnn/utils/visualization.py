@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
-def plot_sample_predictions(preds, targets, inputs, output_vars, coords, save_dir, n_samples=5):
+def plot_sample_predictions(preds, targets, inputs, output_vars, coords, save_dir, n_samples=5,
+                            hr_label='HR', lr_label='LR'):
     """Plot sample predictions vs targets for all variables."""
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -56,33 +57,38 @@ def plot_sample_predictions(preds, targets, inputs, output_vars, coords, save_di
         # Wind fields (3x3 grid)
         if wind_u_idx is not None and wind_v_idx is not None:
             _plot_wind_sample(input_sample, target, pred, wind_u_idx, wind_v_idx,
-                              has_coords, extent, save_dir, idx)
+                              has_coords, extent, save_dir, idx,
+                              hr_label=hr_label, lr_label=lr_label)
 
         # Temperature
         if temp_idx is not None:
             _plot_scalar_sample(input_sample, target, pred, temp_idx, 'Temperature',
-                                'RdYlBu_r', 'K', has_coords, extent, save_dir, idx)
+                                'RdYlBu_r', 'K', has_coords, extent, save_dir, idx,
+                                hr_label=hr_label, lr_label=lr_label)
 
         # Pressure
         if pressure_idx is not None:
             _plot_scalar_sample(input_sample, target, pred, pressure_idx, 'Air Pressure',
-                                'viridis', 'Pa', has_coords, extent, save_dir, idx)
+                                'viridis', 'Pa', has_coords, extent, save_dir, idx,
+                                hr_label=hr_label, lr_label=lr_label)
 
         # Radiation
         if radiation_idx is not None:
             _plot_scalar_sample(input_sample, target, pred, radiation_idx, 'Solar Radiation',
                                 'YlOrRd', 'W/m2', has_coords, extent, save_dir, idx,
-                                vmin_override=0)
+                                vmin_override=0, hr_label=hr_label, lr_label=lr_label)
 
         # Any remaining variables not covered by the dedicated handlers above
         for var_i, var_name in enumerate(output_vars):
             if var_i not in plotted_indices:
                 _plot_scalar_sample(input_sample, target, pred, var_i, var_name,
-                                    'viridis', '', has_coords, extent, save_dir, idx)
+                                    'viridis', '', has_coords, extent, save_dir, idx,
+                                    hr_label=hr_label, lr_label=lr_label)
 
 
 def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
-                      has_coords, extent, save_dir, sample_idx):
+                      has_coords, extent, save_dir, sample_idx,
+                      hr_label='HR', lr_label='LR'):
     """Plot wind U, V, and speed for a single sample."""
     try:
         fig, axes = plt.subplots(3, 3, figsize=(15, 12))
@@ -96,8 +102,8 @@ def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
 
         # U component row
         for col, (data, title) in enumerate([
-            (input_sample[u_idx], 'Input U (ERA5)'),
-            (target[u_idx], 'Target U (CONUS404)'),
+            (input_sample[u_idx], f'Input U ({lr_label})'),
+            (target[u_idx], f'Target U ({hr_label})'),
             (pred[u_idx], 'Predicted U'),
         ]):
             im = axes[0, col].imshow(data, cmap='RdBu_r', vmin=-15, vmax=15, **imshow_kw)
@@ -106,8 +112,8 @@ def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
 
         # V component row
         for col, (data, title) in enumerate([
-            (input_sample[v_idx], 'Input V (ERA5)'),
-            (target[v_idx], 'Target V (CONUS404)'),
+            (input_sample[v_idx], f'Input V ({lr_label})'),
+            (target[v_idx], f'Target V ({hr_label})'),
             (pred[v_idx], 'Predicted V'),
         ]):
             im = axes[1, col].imshow(data, cmap='RdBu_r', vmin=-15, vmax=15, **imshow_kw)
@@ -117,8 +123,8 @@ def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
         # Speed row
         vmax_speed = max(input_speed.max(), target_speed.max(), pred_speed.max())
         for col, (data, title) in enumerate([
-            (input_speed, 'Input Speed (ERA5)'),
-            (target_speed, 'Target Speed (CONUS404)'),
+            (input_speed, f'Input Speed ({lr_label})'),
+            (target_speed, f'Target Speed ({hr_label})'),
             (pred_speed, 'Predicted Speed'),
         ]):
             im = axes[2, col].imshow(data, cmap='viridis', vmin=0, vmax=vmax_speed, **imshow_kw)
@@ -141,7 +147,7 @@ def _plot_wind_sample(input_sample, target, pred, u_idx, v_idx,
 
 def _plot_scalar_sample(input_sample, target, pred, var_idx, var_label,
                         cmap, units, has_coords, extent, save_dir, sample_idx,
-                        vmin_override=None):
+                        vmin_override=None, hr_label='HR', lr_label='LR'):
     """Plot a scalar variable (temperature, pressure, radiation) for a single sample."""
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     fig.suptitle(f'{var_label} - Sample {sample_idx}', fontsize=16)
@@ -156,8 +162,8 @@ def _plot_scalar_sample(input_sample, target, pred, var_idx, var_label,
                      origin='lower', aspect='auto')
 
     for col, (data, title) in enumerate([
-        (input_sample[var_idx], 'Input (ERA5)'),
-        (target[var_idx], 'Target (CONUS404)'),
+        (input_sample[var_idx], f'Input ({lr_label})'),
+        (target[var_idx], f'Target ({hr_label})'),
         (pred[var_idx], 'Predicted'),
     ]):
         im = axes[col].imshow(data, **imshow_kw)

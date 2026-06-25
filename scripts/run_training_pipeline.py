@@ -344,6 +344,8 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     nc.sequence_length = int(sequence_length)
     if 'crs' in train_config:
         nc.crs = str(train_config['crs'])
+    nc.hr_source = str(train_config.get('hr_source', 'HR'))
+    nc.lr_source = str(train_config.get('lr_source', 'LR'))
 
     # -- Streamed inference: iterate over blocks of sliding-window start indices --
     n_windows = max(0, n_total - sequence_length + 1)
