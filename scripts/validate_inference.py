@@ -94,18 +94,18 @@ NDBC_STATION_LATLON = {
 # Variable mapping: (obs_var, model_var, era5_var, conus_truth_var, label, unit)
 # obs_var=None means derive from u/v
 STATION_VAR_MAP = [
-    ("u10_ms",           "conus404_u",        "era5_u",        "conus404_u",        "u_wind",    "m/s"),
-    ("v10_ms",           "conus404_v",        "era5_v",        "conus404_v",        "v_wind",    "m/s"),
-    ("wind_speed_ms",    None,                None,            None,                "wind_speed","m/s"),
-    ("air_temperature_k","conus404_air_temp", "era5_air_temp", "conus404_air_temp", "air_temp",  "K"),
+    ("u10_ms",           "hr_u",        "lr_u",        "hr_u",        "u_wind",    "m/s"),
+    ("v10_ms",           "hr_v",        "lr_v",        "hr_v",        "v_wind",    "m/s"),
+    ("wind_speed_ms",    None,          None,          None,          "wind_speed","m/s"),
+    ("air_temperature_k","hr_air_temp", "lr_air_temp", "hr_air_temp", "air_temp",  "K"),
 ]
 
 # Whale's Tale vars (different naming)
 WHALES_TALE_VAR_MAP = [
-    ("u10_ms",  "conus404_u",        "era5_u",        "conus404_u",        "u_wind",    "m/s"),
-    ("v10_ms",  "conus404_v",        "era5_v",        "conus404_v",        "v_wind",    "m/s"),
-    ("wind_speed", None,             None,            None,                "wind_speed","m/s"),
-    ("air_temperature_k","conus404_air_temp", "era5_air_temp", "conus404_air_temp", "air_temp",  "K"),
+    ("u10_ms",  "hr_u",        "lr_u",        "hr_u",        "u_wind",    "m/s"),
+    ("v10_ms",  "hr_v",        "lr_v",        "hr_v",        "v_wind",    "m/s"),
+    ("wind_speed", None,       None,          None,          "wind_speed","m/s"),
+    ("air_temperature_k","hr_air_temp", "lr_air_temp", "hr_air_temp", "air_temp",  "K"),
 ]
 
 
@@ -538,25 +538,25 @@ def run_path1(inference_ds, processed_ds, n_points, seed, output_dir):
     for pt, (iy, ix) in enumerate(zip(iys, ixs)):
         # -- Model --
         try:
-            mod_u = inference_ds["conus404_u"].isel(y=int(iy), x=int(ix)).values[inf_idx].astype(float)
-            mod_v = inference_ds["conus404_v"].isel(y=int(iy), x=int(ix)).values[inf_idx].astype(float)
+            mod_u = inference_ds["hr_u"].isel(y=int(iy), x=int(ix)).values[inf_idx].astype(float)
+            mod_v = inference_ds["hr_v"].isel(y=int(iy), x=int(ix)).values[inf_idx].astype(float)
         except Exception as e:
             logging.debug(f"  pt{pt}: inference isel failed – {e}")
             continue
 
-        # -- CONUS404 truth --
-        if "conus404_u" not in processed_ds or "conus404_v" not in processed_ds:
-            logging.warning("  processed_ds missing conus404_u/v, skipping Path 1")
+        # -- HR truth --
+        if "hr_u" not in processed_ds or "hr_v" not in processed_ds:
+            logging.warning("  processed_ds missing hr_u/v, skipping Path 1")
             break
-        tru_u = processed_ds["conus404_u"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
-        tru_v = processed_ds["conus404_v"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
+        tru_u = processed_ds["hr_u"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
+        tru_v = processed_ds["hr_v"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
 
-        # -- ERA5 --
-        if "era5_u" not in processed_ds or "era5_v" not in processed_ds:
-            logging.warning("  processed_ds missing era5_u/v, skipping Path 1")
+        # -- LR (ERA5) --
+        if "lr_u" not in processed_ds or "lr_v" not in processed_ds:
+            logging.warning("  processed_ds missing lr_u/v, skipping Path 1")
             break
-        e5_u = processed_ds["era5_u"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
-        e5_v = processed_ds["era5_v"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
+        e5_u = processed_ds["lr_u"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
+        e5_v = processed_ds["lr_v"].isel(y=int(iy), x=int(ix)).values[proc_idx].astype(float)
 
         # Wind speed
         mod_ws = uv_to_speed(mod_u, mod_v)
@@ -713,10 +713,10 @@ def run_path2_station(station_info, inference_ds, processed_ds,
             mod_arr = select_at_times(mod_ts, work_times, inf_time)
         elif var_label == "wind_speed":
             # Derive from model u/v
-            if "conus404_u" in inference_ds and "conus404_v" in inference_ds:
-                mu = select_at_times(inference_ds["conus404_u"].isel(y=iy, x=ix),
+            if "hr_u" in inference_ds and "hr_v" in inference_ds:
+                mu = select_at_times(inference_ds["hr_u"].isel(y=iy, x=ix),
                                      work_times, inf_time)
-                mv = select_at_times(inference_ds["conus404_v"].isel(y=iy, x=ix),
+                mv = select_at_times(inference_ds["hr_v"].isel(y=iy, x=ix),
                                      work_times, inf_time)
                 mod_arr = uv_to_speed(mu, mv)
             else:
@@ -724,7 +724,7 @@ def run_path2_station(station_info, inference_ds, processed_ds,
         else:
             continue
 
-        # ── ERA5 & CONUS404 truth (from processed data) ───────────────────
+        # ── LR (ERA5) & HR truth (from processed data) ───────────────────
         era5_arr  = None
         conus_arr = None
 
@@ -733,10 +733,10 @@ def run_path2_station(station_info, inference_ds, processed_ds,
                 era5_arr = select_at_times(
                     processed_ds[era5_var].isel(y=iy, x=ix), work_times, proc_time)
             elif var_label == "wind_speed":
-                if "era5_u" in processed_ds and "era5_v" in processed_ds:
-                    eu = select_at_times(processed_ds["era5_u"].isel(y=iy, x=ix),
+                if "lr_u" in processed_ds and "lr_v" in processed_ds:
+                    eu = select_at_times(processed_ds["lr_u"].isel(y=iy, x=ix),
                                          work_times, proc_time)
-                    ev = select_at_times(processed_ds["era5_v"].isel(y=iy, x=ix),
+                    ev = select_at_times(processed_ds["lr_v"].isel(y=iy, x=ix),
                                          work_times, proc_time)
                     era5_arr = uv_to_speed(eu, ev)
 
@@ -744,10 +744,10 @@ def run_path2_station(station_info, inference_ds, processed_ds,
                 conus_arr = select_at_times(
                     processed_ds[conus_var].isel(y=iy, x=ix), work_times, proc_time)
             elif var_label == "wind_speed":
-                if "conus404_u" in processed_ds and "conus404_v" in processed_ds:
-                    cu = select_at_times(processed_ds["conus404_u"].isel(y=iy, x=ix),
+                if "hr_u" in processed_ds and "hr_v" in processed_ds:
+                    cu = select_at_times(processed_ds["hr_u"].isel(y=iy, x=ix),
                                          work_times, proc_time)
-                    cv = select_at_times(processed_ds["conus404_v"].isel(y=iy, x=ix),
+                    cv = select_at_times(processed_ds["hr_v"].isel(y=iy, x=ix),
                                          work_times, proc_time)
                     conus_arr = uv_to_speed(cu, cv)
 

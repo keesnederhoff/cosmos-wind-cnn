@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs, var_units_for
 
 
 class ERA5InferenceDataset(Dataset):
@@ -310,16 +310,7 @@ def main():
             return
 
     # Units for each output variable — matches the processed data convention
-    VAR_UNITS = {
-        'conus404_u':        'm s**-1',
-        'conus404_v':        'm s**-1',
-        'conus404_air_temp': 'K',
-        'conus404_dew_temp': 'K',
-        'conus404_pressure': 'Pa',
-        'conus404_solar':    'W m**-2',
-        'conus404_thermal':  'W m**-2',
-        'conus404_rain':     'mm hr**-1',
-    }
+    VAR_UNITS = var_units_for(output_vars)
 
     coords = {'time': time_coords}
     if y_coords is not None:

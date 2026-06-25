@@ -66,8 +66,8 @@ def step_preprocess(case_dir, run_dirs):
     preprocessor = NetCDFPreprocessor({
         'data_dir': str(data_dir),
         'physical_bounds': config.get('physical_bounds', {}),
-        'target_prefix': config.get('target_prefix', 'conus404_'),
-        'input_prefix': config.get('input_prefix', 'era5_'),
+        'target_prefix': config.get('target_prefix', 'hr_'),
+        'input_prefix': config.get('input_prefix', 'lr_'),
         'regular_time_grid': config.get('regular_time_grid', False),
     })
 
@@ -512,10 +512,10 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
 
         all_records.append({
             'iy': iy, 'ix': ix, 'n_valid': int(mask.sum()),
-            'rmse_model_ws': rmse_mod, 'rmse_era5_ws': rmse_e5,
+            'rmse_model_ws': rmse_mod, 'rmse_lr_ws': rmse_e5,
             'skill_score_ws': ss,
-            'rmse_model_u': rmse_mod_u, 'rmse_era5_u': rmse_e5_u,
-            'rmse_model_v': rmse_mod_v, 'rmse_era5_v': rmse_e5_v,
+            'rmse_model_u': rmse_mod_u, 'rmse_lr_u': rmse_e5_u,
+            'rmse_model_v': rmse_mod_v, 'rmse_lr_v': rmse_e5_v,
         })
         running_ss.append(ss)
 
@@ -530,7 +530,7 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     med_ss = float(np.nanmedian(df['skill_score_ws']))
     mean_ss = float(np.nanmean(df['skill_score_ws']))
     mean_rmse_model = float(df['rmse_model_ws'].mean())
-    mean_rmse_era5 = float(df['rmse_era5_ws'].mean())
+    mean_rmse_lr = float(df['rmse_lr_ws'].mean())
 
     summary = {
         'n_points': len(df),
@@ -540,7 +540,7 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'median_skill_score': med_ss,
             'mean_skill_score': mean_ss,
             'mean_rmse_model': mean_rmse_model,
-            'mean_rmse_era5': mean_rmse_era5,
+            'mean_rmse_lr': mean_rmse_lr,
         },
     }
     with open(output_dir / 'grid_point_summary.json', 'w') as f:
@@ -548,7 +548,7 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
 
     print(f"\n    Results ({len(df)} grid points, {len(common)} timesteps):")
     print(f"      Wind speed RMSE  model: {mean_rmse_model:.3f} m/s")
-    print(f"      Wind speed RMSE  ERA5:  {mean_rmse_era5:.3f} m/s")
+    print(f"      Wind speed RMSE  LR:    {mean_rmse_lr:.3f} m/s")
     print(f"      Skill score (median):   {med_ss:.3f}")
     print(f"      Skill score (mean):     {mean_ss:.3f}")
     print(f"    Saved to: {output_dir}")

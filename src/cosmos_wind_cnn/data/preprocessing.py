@@ -372,7 +372,7 @@ class NetCDFPreprocessor:
     def _standardize_variable_attrs(self, ds: xr.Dataset) -> xr.Dataset:
         """
         Standardize variable attributes so long_name and standard_name
-        match the variable key name (e.g., conus404_air_temp).
+        match the variable key name (e.g., hr_air_temp).
         """
         for var_name in ds.data_vars:
             ds[var_name].attrs['long_name'] = var_name

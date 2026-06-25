@@ -48,8 +48,8 @@ def main():
     preprocessor = NetCDFPreprocessor({
         'data_dir': str(data_dir),
         'physical_bounds': config.get('physical_bounds', {}),
-        'target_prefix': config.get('target_prefix', 'conus404_'),
-        'input_prefix': config.get('input_prefix', 'era5_'),
+        'target_prefix': config.get('target_prefix', 'hr_'),
+        'input_prefix': config.get('input_prefix', 'lr_'),
         'regular_time_grid': config.get('regular_time_grid', False),
     })
 
