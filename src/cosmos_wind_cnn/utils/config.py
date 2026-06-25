@@ -101,8 +101,8 @@ def parse_variable_config(config: dict) -> Tuple[List[str], List[str], List[Tupl
     return input_vars, output_vars, wind_pair_indices
 
 
-def classify_file_keys(file_dict, target_prefix: str = 'conus404_',
-                       input_prefix: str = 'era5_'):
+def classify_file_keys(file_dict, target_prefix: str = 'hr_',
+                       input_prefix: str = 'lr_'):
     """
     Partition file_dict keys into (target, input, other) by prefix, preserving order.
 
@@ -116,7 +116,7 @@ def classify_file_keys(file_dict, target_prefix: str = 'conus404_',
     return target_keys, input_keys, other_keys
 
 
-# Units keyed by variable-name suffix (prefix-agnostic: works for conus404_*, rtma_*, ...)
+# Units keyed by variable-name suffix (prefix-agnostic: works for hr_*, lr_*, ...)
 _UNIT_BY_SUFFIX = {
     'air_temp': 'K', 'dew_temp': 'K', 'pressure': 'Pa',
     'solar': 'W m**-2', 'thermal': 'W m**-2', 'rain': 'mm hr**-1',

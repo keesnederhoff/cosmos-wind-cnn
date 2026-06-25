@@ -3,53 +3,53 @@ from cosmos_wind_cnn.utils.config import (
 )
 
 
-def test_classify_file_keys_rtma_prefix():
+def test_classify_file_keys_explicit_prefix():
     file_dict = {
-        'rtma_u': 'a.nc', 'era5_u': 'b.nc',
-        'rtma_pressure': 'c.nc', 'era5_pressure': 'd.nc',
+        'hr_u': 'a.nc', 'lr_u': 'b.nc',
+        'hr_pressure': 'c.nc', 'lr_pressure': 'd.nc',
         'static_terrain': 'e.nc',
     }
     target, inp, other = classify_file_keys(
-        file_dict, target_prefix='rtma_', input_prefix='era5_'
+        file_dict, target_prefix='hr_', input_prefix='lr_'
     )
-    assert target == ['rtma_u', 'rtma_pressure']
-    assert inp == ['era5_u', 'era5_pressure']
+    assert target == ['hr_u', 'hr_pressure']
+    assert inp == ['lr_u', 'lr_pressure']
     assert other == ['static_terrain']
 
 
-def test_classify_file_keys_defaults_conus404():
-    file_dict = {'conus404_u': 'a.nc', 'era5_u': 'b.nc'}
+def test_classify_file_keys_defaults_hr_lr():
+    file_dict = {'hr_u': 'a.nc', 'lr_u': 'b.nc'}
     target, inp, other = classify_file_keys(file_dict)
-    assert target == ['conus404_u']
-    assert inp == ['era5_u']
+    assert target == ['hr_u']
+    assert inp == ['lr_u']
     assert other == []
 
 
-def test_var_units_for_rtma_and_conus404():
-    units = var_units_for(['rtma_u', 'rtma_v', 'rtma_air_temp',
-                           'rtma_dew_temp', 'rtma_pressure', 'rtma_rain'])
+def test_var_units_for_hr_and_lr():
+    units = var_units_for(['hr_u', 'hr_v', 'hr_air_temp',
+                           'hr_dew_temp', 'hr_pressure', 'hr_rain'])
     assert units == {
-        'rtma_u': 'm s**-1', 'rtma_v': 'm s**-1',
-        'rtma_air_temp': 'K', 'rtma_dew_temp': 'K',
-        'rtma_pressure': 'Pa', 'rtma_rain': 'mm hr**-1',
+        'hr_u': 'm s**-1', 'hr_v': 'm s**-1',
+        'hr_air_temp': 'K', 'hr_dew_temp': 'K',
+        'hr_pressure': 'Pa', 'hr_rain': 'mm hr**-1',
     }
-    rad = var_units_for(['conus404_solar', 'conus404_thermal'])
-    assert rad == {'conus404_solar': 'W m**-2', 'conus404_thermal': 'W m**-2'}
+    rad = var_units_for(['lr_solar', 'lr_thermal'])
+    assert rad == {'lr_solar': 'W m**-2', 'lr_thermal': 'W m**-2'}
 
 
 def test_var_units_for_skips_unknown():
-    assert var_units_for(['rtma_visibility']) == {}
+    assert var_units_for(['hr_visibility']) == {}
 
 
-def test_wind_var_names_rtma():
+def test_wind_var_names_hr_lr():
     variable_pairs = {
-        'wind_u': {'high_res': 'rtma_u', 'low_res': 'era5_u'},
-        'wind_v': {'high_res': 'rtma_v', 'low_res': 'era5_v'},
-        'pressure': {'high_res': 'rtma_pressure', 'low_res': 'era5_pressure'},
+        'wind_u': {'high_res': 'hr_u', 'low_res': 'lr_u'},
+        'wind_v': {'high_res': 'hr_v', 'low_res': 'lr_v'},
+        'pressure': {'high_res': 'hr_pressure', 'low_res': 'lr_pressure'},
     }
-    assert wind_var_names(variable_pairs) == ('rtma_u', 'rtma_v', 'era5_u', 'era5_v')
+    assert wind_var_names(variable_pairs) == ('hr_u', 'hr_v', 'lr_u', 'lr_v')
 
 
 def test_wind_var_names_none_when_absent():
-    variable_pairs = {'pressure': {'high_res': 'rtma_pressure', 'low_res': 'era5_pressure'}}
+    variable_pairs = {'pressure': {'high_res': 'hr_pressure', 'low_res': 'lr_pressure'}}
     assert wind_var_names(variable_pairs) is None

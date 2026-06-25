@@ -27,9 +27,9 @@ class NetCDFPreprocessor:
         # loaded from preprocessing.yaml → physical_bounds section
         self.physical_bounds = config.get('physical_bounds', {})
         # Prefixes identifying target (high-res reference grid) and input (coarse) keys.
-        # Defaults keep the original CONUS404/ERA5 behaviour.
-        self.target_prefix = config.get('target_prefix', 'conus404_')
-        self.input_prefix = config.get('input_prefix', 'era5_')
+        # Defaults: hr_ / lr_.
+        self.target_prefix = config.get('target_prefix', 'hr_')
+        self.input_prefix = config.get('input_prefix', 'lr_')
         # Reindex all variables onto a complete hourly axis (NaN-filling missing hours)
         # before splitting. Needed for products with time gaps (e.g. RTMA); off by default.
         self.regular_time_grid = config.get('regular_time_grid', False)
@@ -44,13 +44,13 @@ class NetCDFPreprocessor:
         Load multiple NetCDF files and align them spatially/temporally.
         Uses dask for lazy loading to handle large datasets efficiently.
 
-        ERA5 (coarse) variables are interpolated onto the CONUS404 (fine) grid
+        LR (coarse) variables are interpolated onto the HR (fine) grid
         so that all variables share a common spatial grid.
 
         Args:
             file_dict: Dictionary like {
-                'era5_u': 'ERA5_u_wind_2020_2023.nc',
-                'conus404_u': 'CONUS404_u_wind_2020_2023.nc',
+                'lr_u': 'LR_u_wind_2020_2023.nc',
+                'hr_u': 'HR_u_wind_2020_2023.nc',
             }
             start_date: Optional start date string (e.g. '2010-01-01') to
                 restrict the time period considered for the overlap.
@@ -58,7 +58,7 @@ class NetCDFPreprocessor:
                 restrict the time period.
 
         Returns:
-            Combined xarray Dataset with all variables on the CONUS404 grid.
+            Combined xarray Dataset with all variables on the HR grid.
         """
         raw_datasets = {}
         var_names_map = {}
@@ -89,7 +89,7 @@ class NetCDFPreprocessor:
             print(f"  Time range: {common_times[0]} to {common_times[-1]}")
 
         # Identify target variables (high-resolution reference grid) and input
-        # (coarse) variables by configurable prefix. Defaults: conus404_ / era5_.
+        # (coarse) variables by configurable prefix. Defaults: hr_ / lr_.
         target_keys, input_keys, other_keys = classify_file_keys(
             file_dict, self.target_prefix, self.input_prefix
         )
@@ -103,7 +103,7 @@ class NetCDFPreprocessor:
         # Build combined dataset lazily - extract variables one by one
         print("\nBuilding combined dataset (lazy)...")
 
-        # --- Step 1: load all CONUS404 DataArrays (they define the target grid) ---
+        # --- Step 1: load all HR (target) DataArrays (they define the target grid) ---
         data_vars = {}
         target_reference_da = None  # used as spatial template for interp_like
 
@@ -116,11 +116,11 @@ class NetCDFPreprocessor:
             da = self._mask_fill_values(da, var_name)
 
             if target_reference_da is None:
-                target_reference_da = da  # spatial template for ERA5 interpolation
+                target_reference_da = da  # spatial template for LR interpolation
 
             data_vars[var_name] = da
 
-        # --- Step 2: load ERA5 DataArrays and interpolate onto CONUS404 grid ---
+        # --- Step 2: load LR DataArrays and interpolate onto HR grid ---
         for var_name in input_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
@@ -143,7 +143,7 @@ class NetCDFPreprocessor:
 
             data_vars[var_name] = da
 
-        # --- Step 3: handle any remaining variables not prefixed with era5_/conus404_ ---
+        # --- Step 3: handle any remaining variables not prefixed with lr_/hr_ ---
         for var_name in other_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
@@ -156,7 +156,7 @@ class NetCDFPreprocessor:
         combined = xr.Dataset(data_vars)
 
         # Optional: reindex onto a complete hourly grid (NaN-fill gaps) for products
-        # with missing hours (e.g. RTMA). Off by default — CONUS404 is gap-free.
+        # with missing hours (e.g. RTMA). Off by default — HR data is typically gap-free.
         if self.regular_time_grid:
             n_before = combined.sizes['time']
             combined = self._reindex_regular_hourly(combined)
@@ -217,7 +217,7 @@ class NetCDFPreprocessor:
 
         Priority:
           1. Per-variable bounds from preprocessing.yaml → physical_bounds
-             (specific min/max for each variable key, e.g. conus404_v: {min: -100, max: 100})
+             (specific min/max for each variable key, e.g. hr_v: {min: -100, max: 100})
           2. Generic fallback: |value| > 1e10  (catches undeclared WRF fill values
              such as the ~1e37 that CONUS404 northward wind was using)
 
@@ -325,7 +325,7 @@ class NetCDFPreprocessor:
         }
 
         # Determine variable type from key name
-        base_type = var_type.split('_')[-1]  # Get 'u' from 'era5_u' or 'conus404_u'
+        base_type = var_type.split('_')[-1]  # Get 'u' from 'lr_u' or 'hr_u'
 
         if base_type not in patterns:
             # If exact match exists, use it
