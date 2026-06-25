@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple
 import pickle
 from dask.diagnostics import ProgressBar
+from cosmos_wind_cnn.utils.config import classify_file_keys
 
 
 class NetCDFPreprocessor:
@@ -25,6 +26,13 @@ class NetCDFPreprocessor:
         # Per-variable physical bounds {var_key: {'min': float, 'max': float}}
         # loaded from preprocessing.yaml → physical_bounds section
         self.physical_bounds = config.get('physical_bounds', {})
+        # Prefixes identifying target (high-res reference grid) and input (coarse) keys.
+        # Defaults keep the original CONUS404/ERA5 behaviour.
+        self.target_prefix = config.get('target_prefix', 'conus404_')
+        self.input_prefix = config.get('input_prefix', 'era5_')
+        # Reindex all variables onto a complete hourly axis (NaN-filling missing hours)
+        # before splitting. Needed for products with time gaps (e.g. RTMA); off by default.
+        self.regular_time_grid = config.get('regular_time_grid', False)
 
     def load_and_align_datasets(
         self,
@@ -80,15 +88,16 @@ class NetCDFPreprocessor:
         if len(common_times) > 0:
             print(f"  Time range: {common_times[0]} to {common_times[-1]}")
 
-        # Identify CONUS404 variables to use as the spatial reference grid.
-        # Keys starting with 'conus404_' are the high-resolution target grid.
-        conus_keys = [k for k in file_dict if k.startswith('conus404_')]
-        era5_keys  = [k for k in file_dict if k.startswith('era5_')]
+        # Identify target variables (high-resolution reference grid) and input
+        # (coarse) variables by configurable prefix. Defaults: conus404_ / era5_.
+        target_keys, input_keys, other_keys = classify_file_keys(
+            file_dict, self.target_prefix, self.input_prefix
+        )
 
-        if not conus_keys:
+        if not target_keys:
             raise ValueError(
-                "No CONUS404 variables found in file_dict. "
-                "Keys must start with 'conus404_' for spatial reference."
+                f"No target variables found in file_dict. "
+                f"Keys must start with '{self.target_prefix}' for spatial reference."
             )
 
         # Build combined dataset lazily - extract variables one by one
@@ -96,9 +105,9 @@ class NetCDFPreprocessor:
 
         # --- Step 1: load all CONUS404 DataArrays (they define the target grid) ---
         data_vars = {}
-        conus_reference_da = None  # used as spatial template for interp_like
+        target_reference_da = None  # used as spatial template for interp_like
 
-        for var_name in conus_keys:
+        for var_name in target_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
 
@@ -106,13 +115,13 @@ class NetCDFPreprocessor:
             da = self._standardize_coords(da)
             da = self._mask_fill_values(da, var_name)
 
-            if conus_reference_da is None:
-                conus_reference_da = da  # spatial template for ERA5 interpolation
+            if target_reference_da is None:
+                target_reference_da = da  # spatial template for ERA5 interpolation
 
             data_vars[var_name] = da
 
         # --- Step 2: load ERA5 DataArrays and interpolate onto CONUS404 grid ---
-        for var_name in era5_keys:
+        for var_name in input_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
 
@@ -120,23 +129,22 @@ class NetCDFPreprocessor:
             da = self._standardize_coords(da)
             da = self._mask_fill_values(da, var_name)
 
-            # Interpolate ERA5 (coarse) onto CONUS404 (fine) spatial grid.
-            # interp_like matches on named coordinates ('x', 'y') using linear
-            # interpolation; ERA5 already covers the CONUS404 domain so no
+            # Interpolate the coarse input onto the high-res target grid.
+            # interp matches on named coordinates ('x', 'y') using linear
+            # interpolation; the input already covers the target domain so no
             # extrapolation fill is needed.
             print(f"  Interpolating {var_name} ({da.sizes['y']}x{da.sizes['x']}) "
-                  f"-> CONUS404 grid ({conus_reference_da.sizes['y']}x{conus_reference_da.sizes['x']})...")
+                  f"-> target grid ({target_reference_da.sizes['y']}x{target_reference_da.sizes['x']})...")
             da = da.interp(
-                y=conus_reference_da['y'],
-                x=conus_reference_da['x'],
+                y=target_reference_da['y'],
+                x=target_reference_da['x'],
                 method='linear',
             )
 
             data_vars[var_name] = da
 
         # --- Step 3: handle any remaining variables not prefixed with era5_/conus404_ ---
-        remaining = [k for k in file_dict if k not in conus_keys and k not in era5_keys]
-        for var_name in remaining:
+        for var_name in other_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
             da = ds[actual_var_name].sel({time_coord_name: common_times})
@@ -147,12 +155,34 @@ class NetCDFPreprocessor:
         # Merge into a single dataset (all arrays now share time/y/x)
         combined = xr.Dataset(data_vars)
 
+        # Optional: reindex onto a complete hourly grid (NaN-fill gaps) for products
+        # with missing hours (e.g. RTMA). Off by default — CONUS404 is gap-free.
+        if self.regular_time_grid:
+            n_before = combined.sizes['time']
+            combined = self._reindex_regular_hourly(combined)
+            n_after = combined.sizes['time']
+            print(f"  Regular hourly grid: {n_before} -> {n_after} timesteps "
+                  f"({n_after - n_before} gap hours NaN-filled)")
+
         print(f"\nCombined dataset (lazy-loaded):")
         print(f"  Variables: {list(combined.data_vars)}")
         print(f"  Grid shape: {len(combined.y)} x {len(combined.x)}")
         print(f"  Time points: {len(combined.time)}")
 
         return combined
+
+    @staticmethod
+    def _reindex_regular_hourly(ds: xr.Dataset) -> xr.Dataset:
+        """Reindex onto a complete hourly time axis, NaN-filling any missing hours.
+
+        Missing hours become explicit NaN rows so the dataset's NaN-window dropping
+        (WindDataset3D / inference sliding window) excludes sequence windows that would
+        otherwise silently span a time discontinuity.
+        """
+        t = ds['time'].values
+        full = np.arange(t.min(), t.max() + np.timedelta64(1, 'h'),
+                         np.timedelta64(1, 'h'))
+        return ds.reindex(time=full)
 
     def _standardize_coords(self, da: xr.DataArray) -> xr.DataArray:
         """Standardize coordinate names for a DataArray"""

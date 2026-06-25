@@ -11,7 +11,7 @@ Usage:
         --run-name 3663482
 
 Output:
-    case_studies/sf_bay/outputs/<run_name>/inference/full_record.nc
+    case_studies/sf_bay/results/<run_name>/output_inference/full_record.nc
 """
 
 import argparse
@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
 
 class ERA5InferenceDataset(Dataset):
@@ -110,11 +110,12 @@ def main():
     args = parser.parse_args()
 
     case_dir   = Path(args.case_study)
-    data_dir   = case_dir / 'data' / 'processed'
+    run_dirs   = get_run_dirs(case_dir, args.run_name)
+    data_dir   = run_dirs['data_processed']
     stats_path = data_dir / 'normalization_stats.pkl'
-    checkpoint_path = case_dir / 'checkpoints' / args.run_name / 'best_model.pth'
+    checkpoint_path = run_dirs['checkpoint'] / 'best_model.pth'
     output_path = (Path(args.output) if args.output
-                   else case_dir / 'outputs' / args.run_name / 'inference' / 'full_record.nc')
+                   else run_dirs['output_inference'] / 'full_record.nc')
 
     if not checkpoint_path.exists():
         print(f"Error: checkpoint not found at {checkpoint_path}")

@@ -17,7 +17,7 @@ Usage:
         --output     case_studies/sf_bay/data/processed/inference_2000_2005.nc
 
 Output:
-    case_studies/<name>/data/processed/inference_regridded.nc
+    case_studies/<name>/results/<run_name>/output_inference/inference_regridded.nc
 """
 
 import os
@@ -31,7 +31,7 @@ import xarray as xr
 from dask.diagnostics import ProgressBar
 
 from cosmos_wind_cnn.data.regridder import Regridder
-from cosmos_wind_cnn.utils.config import load_config
+from cosmos_wind_cnn.utils.config import load_config, get_run_dirs
 
 
 def main():
@@ -50,16 +50,19 @@ def main():
                         help='Override start date (ISO format, e.g. 2000-01-01)')
     parser.add_argument('--end-date', default=None,
                         help='Override end date (ISO format, e.g. 2005-12-31)')
+    parser.add_argument('--run-name', default='default',
+                        help='Run name — looks for reference grid in results/<run_name>/data_processed/')
     parser.add_argument('--output', default=None,
-                        help='Output NetCDF path (default: data/processed/inference_regridded.nc)')
+                        help='Output NetCDF path (default: results/<run_name>/output_inference/inference_regridded.nc)')
     args = parser.parse_args()
 
     case_dir = Path(args.case_study)
+    run_dirs = get_run_dirs(case_dir, args.run_name)
     data_dir = case_dir / 'data' / 'raw'
-    processed_dir = case_dir / 'data' / 'processed'
+    processed_dir = run_dirs['data_processed']
     config_path = case_dir / 'configs' / 'inference_preprocessing.yaml'
     ref_grid_path = processed_dir / 'target_grid_reference.nc'
-    output_path = Path(args.output) if args.output else processed_dir / 'inference_regridded.nc'
+    output_path = Path(args.output) if args.output else run_dirs['output_inference'] / 'inference_regridded.nc'
 
     # ── Load config ──────────────────────────────────────────────────────────
     print("=" * 70)

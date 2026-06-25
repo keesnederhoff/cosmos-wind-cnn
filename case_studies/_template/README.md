@@ -11,13 +11,25 @@
 
 3. Place NetCDF files in `data/raw/`
 
-4. Edit `configs/preprocessing.yaml` with your filenames
+4. Edit `configs/preprocessing.yaml` with your filenames and physical bounds
 
-5. Edit `configs/training.yaml` with your hyperparameters
+5. Edit `configs/training.yaml` with your variable pairs and hyperparameters
 
-6. Run the pipeline:
+6. Edit `configs/inference_preprocessing.yaml` with source file mappings for inference
+
+7. Run the full pipeline:
    ```bash
-   python scripts/preprocess.py --case-study case_studies/my_study
-   python scripts/train.py --case-study case_studies/my_study
-   python scripts/evaluate.py --case-study case_studies/my_study
+   python scripts/run_training_pipeline.py \
+       --case-study case_studies/my_study \
+       --run-name first_run \
+       --gpus 4
    ```
+
+   Or run individual steps:
+   ```bash
+   python scripts/preprocess_training.py --case-study case_studies/my_study --run-name first_run
+   python scripts/train.py --case-study case_studies/my_study --run-name first_run
+   python scripts/evaluate.py --case-study case_studies/my_study --run-name first_run
+   ```
+
+All outputs are saved under `results/<run_name>/` (checkpoint, processed data, logs, inference, evaluation).

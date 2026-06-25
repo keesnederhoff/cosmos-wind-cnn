@@ -11,9 +11,19 @@
 #SBATCH --exclusive                        # Exclusive node access, no sharing
 #SBATCH --account=pcmsc                    # Account to charge the job to
 #SBATCH --time=2-00:00:00               # Max wall time for gpu partition (D-HH:MM:SS)
-#SBATCH --output=gpu_pipeline_%j.log       # Standard output and error log
+#SBATCH --output=gpu_pipeline_%j.log       # Temporary location (moved into results/ at end)
 
 set -euo pipefail
+
+# Override the case study at submit time without editing this file, e.g.:
+#   sbatch --export=ALL,CASE_STUDY=case_studies/sf_bay_rtma scripts/gpu_tallgrass.slurm
+CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay}"
+RUN_NAME=$SLURM_JOB_ID
+LOG_DIR="${CASE_STUDY}/results/${RUN_NAME}/logs"
+
+# --- always copy SLURM log into results dir, even if the pipeline fails ---
+# $SLURM_SUBMIT_DIR is where sbatch was called from (log is written there regardless of cd below)
+trap 'mkdir -p "$LOG_DIR" && cp "${SLURM_SUBMIT_DIR}/gpu_pipeline_${SLURM_JOB_ID}.log" "$LOG_DIR/" 2>/dev/null || true' EXIT
 
 # --- distributed training setup ---
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
@@ -46,7 +56,9 @@ python -c "import cosmos_wind_cnn; print('import ok:', cosmos_wind_cnn.__file__)
 #   --skip-inference   (reuse existing inference output)
 #   --skip-eval        (skip evaluation vs CONUS404)
 srun python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
-    --run-name $SLURM_JOB_ID \
+    --case-study $CASE_STUDY \
+    --run-name $RUN_NAME \
     --gpus 4 \
     --num-workers 8
+
+# Note: SLURM log is copied to $LOG_DIR automatically via the EXIT trap above.

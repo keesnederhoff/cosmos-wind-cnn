@@ -46,7 +46,9 @@ from tqdm import tqdm
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.config import (
+    load_config, parse_variable_config, get_run_dirs, var_units_for, wind_var_names,
+)
 from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
 
 
@@ -54,15 +56,18 @@ from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_s
 #  STEP 1: Preprocess
 # ═══════════════════════════════════════════════════════════════════════════
 
-def step_preprocess(case_dir):
+def step_preprocess(case_dir, run_dirs):
     """Load raw data, align, split, save stats and reference grid."""
     config = load_config(case_dir / 'configs' / 'preprocessing.yaml')
     data_dir = case_dir / 'data' / 'raw'
-    output_dir = case_dir / 'data' / 'processed'
+    output_dir = run_dirs['data_processed']
 
     preprocessor = NetCDFPreprocessor({
         'data_dir': str(data_dir),
         'physical_bounds': config.get('physical_bounds', {}),
+        'target_prefix': config.get('target_prefix', 'conus404_'),
+        'input_prefix': config.get('input_prefix', 'era5_'),
+        'regular_time_grid': config.get('regular_time_grid', False),
     })
 
     file_dict = config['file_dict']
@@ -149,9 +154,9 @@ def step_train(case_dir, run_name, gpus):
 #  STEP 3: Archive configs
 # ═══════════════════════════════════════════════════════════════════════════
 
-def step_archive_configs(case_dir, run_name):
+def step_archive_configs(case_dir, run_dirs):
     """Copy all config files into the checkpoint directory for reproducibility."""
-    checkpoint_dir = case_dir / 'checkpoints' / run_name
+    checkpoint_dir = run_dirs['checkpoint']
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     configs_dir = case_dir / 'configs'
@@ -205,12 +210,12 @@ class _SlidingWindowDataset(Dataset):
         return torch.from_numpy(np.stack(slices, axis=1)), start
 
 
-def step_inference(case_dir, run_name, start_date, end_date, batch_size,
+def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
                    num_workers):
     """Regrid ERA5 onto target grid and run trained model."""
-    processed_dir = case_dir / 'data' / 'processed'
+    processed_dir = run_dirs['data_processed']
     data_dir = case_dir / 'data' / 'raw'
-    checkpoint_dir = case_dir / 'checkpoints' / run_name
+    checkpoint_dir = run_dirs['checkpoint']
 
     # Load archived configs (from checkpoint dir for reproducibility)
     train_config = load_config(checkpoint_dir / 'training.yaml')
@@ -331,18 +336,13 @@ def step_inference(case_dir, run_name, start_date, end_date, batch_size,
     tag_start = (start_date or str(common_times[0])[:10]).replace('-', '')
     tag_end = (end_date or str(common_times[-1])[:10]).replace('-', '')
     output_filename = f'full_record_ERA5_{tag_start}_{tag_end}.nc'
-    output_path = case_dir / 'outputs' / run_name / 'inference' / output_filename
+    output_path = run_dirs['output_inference'] / output_filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if output_path.exists():
         output_path.unlink()
 
-    VAR_UNITS = {
-        'conus404_u': 'm s**-1', 'conus404_v': 'm s**-1',
-        'conus404_air_temp': 'K', 'conus404_dew_temp': 'K',
-        'conus404_pressure': 'Pa', 'conus404_solar': 'W m**-2',
-        'conus404_thermal': 'W m**-2', 'conus404_rain': 'mm hr**-1',
-    }
+    VAR_UNITS = var_units_for(output_vars)
 
     coords = {'time': time_coords}
     if y_coords is not None:
@@ -362,7 +362,7 @@ def step_inference(case_dir, run_name, start_date, end_date, batch_size,
             ds_out[var].attrs['units'] = VAR_UNITS[var]
     ds_out.attrs['source_checkpoint'] = str(checkpoint_path)
     ds_out.attrs['checkpoint_epoch'] = int(checkpoint['epoch'])
-    ds_out.attrs['run_name'] = run_name
+    ds_out.attrs['run_name'] = run_dirs['run_root'].name
     ds_out.attrs['sequence_length'] = sequence_length
     if 'crs' in train_config:
         ds_out.attrs['crs'] = train_config['crs']
@@ -386,12 +386,19 @@ def step_inference(case_dir, run_name, start_date, end_date, batch_size,
 #  STEP 5: Evaluate vs CONUS404 at random grid points
 # ═══════════════════════════════════════════════════════════════════════════
 
-def step_evaluate_grid_points(case_dir, run_name, inference_path,
+def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
                               n_points=100, seed=42):
     """Compare model vs ERA5 vs CONUS404 at random grid points."""
-    processed_dir = case_dir / 'data' / 'processed'
-    output_dir = case_dir / 'outputs' / run_name / 'evaluation' / 'grid_points'
+    processed_dir = run_dirs['data_processed']
+    output_dir = run_dirs['output_evaluation'] / 'grid_points'
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    train_config = load_config(run_dirs['checkpoint'] / 'training.yaml')
+    names = wind_var_names(train_config['variable_pairs'])
+    if names is None:
+        print("    No wind pair in training config -- skipping evaluation.")
+        return
+    u_tgt, v_tgt, u_in, v_in = names
 
     # Load inference and processed data
     inference_ds = xr.open_dataset(inference_path, chunks={'time': 500})
@@ -427,11 +434,11 @@ def step_evaluate_grid_points(case_dir, run_name, inference_path,
     ixs = rng.integers(0, nx, n_points)
 
     # Check required variables
-    for var in ['conus404_u', 'conus404_v']:
+    for var in [u_tgt, v_tgt]:
         if var not in inference_ds:
             print(f"    {var} not in inference output -- skipping evaluation.")
             return
-    for var in ['conus404_u', 'conus404_v', 'era5_u', 'era5_v']:
+    for var in [u_tgt, v_tgt, u_in, v_in]:
         if var not in processed_ds:
             print(f"    {var} not in processed data -- skipping evaluation.")
             return
@@ -445,16 +452,16 @@ def step_evaluate_grid_points(case_dir, run_name, inference_path,
         iy, ix = int(iy), int(ix)
 
         # Model predictions
-        mod_u = inference_ds['conus404_u'].isel(y=iy, x=ix).values[inf_idx].astype(float)
-        mod_v = inference_ds['conus404_v'].isel(y=iy, x=ix).values[inf_idx].astype(float)
+        mod_u = inference_ds[u_tgt].isel(y=iy, x=ix).values[inf_idx].astype(float)
+        mod_v = inference_ds[v_tgt].isel(y=iy, x=ix).values[inf_idx].astype(float)
 
-        # CONUS404 truth
-        tru_u = processed_ds['conus404_u'].isel(y=iy, x=ix).values[proc_idx].astype(float)
-        tru_v = processed_ds['conus404_v'].isel(y=iy, x=ix).values[proc_idx].astype(float)
+        # High-res truth (target)
+        tru_u = processed_ds[u_tgt].isel(y=iy, x=ix).values[proc_idx].astype(float)
+        tru_v = processed_ds[v_tgt].isel(y=iy, x=ix).values[proc_idx].astype(float)
 
-        # ERA5
-        e5_u = processed_ds['era5_u'].isel(y=iy, x=ix).values[proc_idx].astype(float)
-        e5_v = processed_ds['era5_v'].isel(y=iy, x=ix).values[proc_idx].astype(float)
+        # ERA5 (coarse input)
+        e5_u = processed_ds[u_in].isel(y=iy, x=ix).values[proc_idx].astype(float)
+        e5_v = processed_ds[v_in].isel(y=iy, x=ix).values[proc_idx].astype(float)
 
         # Wind speed
         mod_ws = np.sqrt(mod_u**2 + mod_v**2)
@@ -565,12 +572,14 @@ def main():
 
     case_dir = Path(args.case_study)
     run_name = args.run_name
+    run_dirs = get_run_dirs(case_dir, run_name)
     pipeline_start = time.time()
 
     print("=" * 70)
     print(f"TRAINING PIPELINE: {case_dir.name}")
     print("=" * 70)
     print(f"  Run name : {run_name}")
+    print(f"  Run root : {run_dirs['run_root']}")
     print(f"  GPUs     : {args.gpus}")
 
     # ── Step 1: Preprocess ────────────────────────────────────────────────
@@ -579,7 +588,7 @@ def main():
         print("STEP 1/5: Preprocessing")
         print("=" * 70)
         t0 = time.time()
-        step_preprocess(case_dir)
+        step_preprocess(case_dir, run_dirs)
         print(f"\n  Step 1 completed in {timedelta(seconds=int(time.time() - t0))}")
     else:
         print("\n  Step 1: Preprocessing -- SKIPPED")
@@ -599,7 +608,7 @@ def main():
     print("\n" + "=" * 70)
     print("STEP 3/5: Archiving configs")
     print("=" * 70)
-    step_archive_configs(case_dir, run_name)
+    step_archive_configs(case_dir, run_dirs)
 
     # ── Step 4: Inference ─────────────────────────────────────────────────
     inference_path = None
@@ -609,14 +618,18 @@ def main():
         print("=" * 70)
 
         # Get inference period from config if not specified on CLI
-        inf_config = load_config(case_dir / 'configs' / 'inference_preprocessing.yaml')
+        # Prefer archived copy (step 3 just put it there); fall back to configs/
+        inf_config_path = run_dirs['checkpoint'] / 'inference_preprocessing.yaml'
+        if not inf_config_path.exists():
+            inf_config_path = case_dir / 'configs' / 'inference_preprocessing.yaml'
+        inf_config = load_config(inf_config_path)
         inf_start = args.inference_start or inf_config.get('start_date')
         inf_end = args.inference_end or inf_config.get('end_date')
         print(f"  Period: {inf_start or '(start)'} -> {inf_end or '(end)'}")
 
         t0 = time.time()
         inference_path = step_inference(
-            case_dir, run_name, inf_start, inf_end,
+            case_dir, run_dirs, inf_start, inf_end,
             args.batch_size, args.num_workers,
         )
         print(f"\n  Step 4 completed in {timedelta(seconds=int(time.time() - t0))}")
@@ -630,22 +643,38 @@ def main():
         print("=" * 70)
         t0 = time.time()
         step_evaluate_grid_points(
-            case_dir, run_name, inference_path,
+            case_dir, run_dirs, inference_path,
             n_points=args.eval_points,
         )
         print(f"\n  Step 5 completed in {timedelta(seconds=int(time.time() - t0))}")
     else:
         print("\n  Step 5: Evaluation -- SKIPPED")
 
+    # ── Copy SLURM log into the run's logs directory ────────────────────
+    slurm_job_id = os.environ.get('SLURM_JOB_ID')
+    if slurm_job_id:
+        log_dir = run_dirs['logs']
+        log_dir.mkdir(parents=True, exist_ok=True)
+        # Common SLURM log patterns: gpu_pipeline_<id>.log, cpu_pipeline_<id>.log
+        for pattern in (f'gpu_pipeline_{slurm_job_id}.log',
+                        f'cpu_pipeline_{slurm_job_id}.log',
+                        f'slurm-{slurm_job_id}.out'):
+            src = Path(pattern)
+            if src.exists():
+                dest = log_dir / src.name
+                shutil.copy2(src, dest)
+                print(f"\n  Copied SLURM log: {src} -> {dest}")
+
     # ── Done ──────────────────────────────────────────────────────────────
     total = timedelta(seconds=int(time.time() - pipeline_start))
     print("\n" + "=" * 70)
     print(f"PIPELINE COMPLETE  ({total})")
     print("=" * 70)
-    print(f"\n  Checkpoint  : {case_dir / 'checkpoints' / run_name}/")
+    print(f"\n  Run root    : {run_dirs['run_root']}/")
+    print(f"  Checkpoint  : {run_dirs['checkpoint']}/")
     if inference_path:
         print(f"  Inference   : {inference_path}")
-    print(f"  Evaluation  : {case_dir / 'outputs' / run_name / 'evaluation'}/")
+    print(f"  Evaluation  : {run_dirs['output_evaluation']}/")
 
 
 if __name__ == '__main__':

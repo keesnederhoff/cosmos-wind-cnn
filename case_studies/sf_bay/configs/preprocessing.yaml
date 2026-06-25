@@ -7,35 +7,35 @@ file_dict:
 
   # Wind U component (eastward)
   conus404_u: 'CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc'
-  era5_u: 'ERA5_eastward_wind_1978_2022_UTM.nc'
+  era5_u: 'ERA5_eastward_wind_1940_2026_UTM.nc'
 
   # Wind V component (northward)
   conus404_v: 'CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc'
-  era5_v: 'ERA5_northward_wind_1978_2022_UTM.nc'
+  era5_v: 'ERA5_northward_wind_1940_2026_UTM.nc'
 
   # Air Temperature
   conus404_air_temp: 'CONUS404_SFbay_4km_air_temperature_1979_2021_UTM10.nc'
-  era5_air_temp: 'ERA5_air_temperature_1978_2022_UTM.nc'
+  era5_air_temp: 'ERA5_air_temperature_1940_2026_UTM.nc'
 
   # Dew Point Temperature
   conus404_dew_temp: 'CONUS404_SFbay_4km_dew_point_temperature_1979_2021_UTM10.nc'
-  era5_dew_temp: 'ERA5_dew_point_temperature_1978_2022_UTM.nc'
+  era5_dew_temp: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
 
   # Air Pressure
   conus404_pressure: 'CONUS404_SFbay_4km_air_pressure_fixed_height_1979_2021_UTM10.nc'
-  era5_pressure: 'ERA5_air_pressure_fixed_height_1978_2022_UTM.nc'
+  era5_pressure: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
 
   # Surface Solar Radiation
   conus404_solar: 'CONUS404_SFbay_4km_surface_solar_radiation_1979_2021_UTM10.nc'
-  era5_solar: 'ERA5_surface_solar_radiation_1978_2022_UTM.nc'
+  era5_solar: 'ERA5_surface_solar_radiation_1940_2026_UTM.nc'
 
   # Surface Thermal Radiation (downwards)
   conus404_thermal: 'CONUS404_SFbay_4km_surface_thermal_radiation_downwards_1979_2021_UTM10.nc'
-  era5_thermal: 'ERA5_surface_thermal_radiation_1978_2022_UTM.nc'
+  era5_thermal: 'ERA5_surface_thermal_radiation_1940_2026_UTM.nc'
 
   # Rainfall / Precipitation
   conus404_rain: 'CONUS404_SFbay_4km_rainfall_1979_2021_UTM10.nc'
-  era5_rain: 'ERA5_precipitation_1978_2022_UTM.nc'
+  era5_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
 
 # Time period to consider for overlap
 # CONUS404 runs 1979-2021; ERA5 files cover 1978-2022.

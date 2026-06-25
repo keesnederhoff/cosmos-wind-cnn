@@ -11,7 +11,16 @@ Data preparation in progress. See `docs/data_preparation.md` for the upstream pi
 Once data is prepared and placed in `data/raw/`:
 
 ```bash
-python scripts/preprocess.py --case-study case_studies/puget_sound
-python scripts/train.py --case-study case_studies/puget_sound
-python scripts/evaluate.py --case-study case_studies/puget_sound
+# Full pipeline
+python scripts/run_training_pipeline.py \
+    --case-study case_studies/puget_sound \
+    --run-name first_run \
+    --gpus 4
+
+# Or individual steps
+python scripts/preprocess_training.py --case-study case_studies/puget_sound --run-name first_run
+python scripts/train.py --case-study case_studies/puget_sound --run-name first_run
+python scripts/evaluate.py --case-study case_studies/puget_sound --run-name first_run
 ```
+
+All outputs are saved under `results/<run_name>/`.

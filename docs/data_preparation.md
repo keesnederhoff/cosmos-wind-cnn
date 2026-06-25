@@ -19,6 +19,7 @@ The CNN expects all input and target data on the **same spatial grid** in a proj
 - Variables: 10m U/V wind, 2m temperature, surface pressure, solar radiation, cloud cover
 - Temporal resolution: Hourly
 - Spatial resolution: ~0.25 deg (~31 km)
+- Coverage: 1940-present
 
 ### CONUS404 (4 km)
 
@@ -26,6 +27,7 @@ The CNN expects all input and target data on the **same spatial grid** in a proj
 - Variables: Wind, temperature, pressure, radiation at 4 km resolution
 - Temporal resolution: Hourly
 - Spatial resolution: 4 km (native Lambert Conformal Conic)
+- Coverage: 1979-2021
 
 ## Preparation Steps
 
@@ -135,10 +137,19 @@ All files should have identical `y` and `x` dimensions, and overlapping time coo
 
 ## Next Steps
 
-After preparing the data, configure your case study and run the pipeline:
+After preparing the data, run the full pipeline:
+
+```bash
+python scripts/run_training_pipeline.py \
+    --case-study case_studies/my_study \
+    --run-name first_run \
+    --gpus 4
+```
+
+Or configure individual steps:
 
 1. Edit `configs/preprocessing.yaml` with your file mappings
 2. Edit `configs/training.yaml` with variable pairs and hyperparameters
-3. Run: `python scripts/preprocess.py --case-study case_studies/my_study`
+3. Edit `configs/inference_preprocessing.yaml` with source file mappings for inference
 
 See [adding_case_study.md](adding_case_study.md) for the full walkthrough.

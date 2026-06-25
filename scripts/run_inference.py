@@ -28,7 +28,7 @@ Usage:
         --inference-config case_studies/sf_bay/configs/inference_cmip6.yaml
 
 Output:
-    case_studies/<name>/outputs/<run_name>/inference/inference_ERA5_20240101_20261231.nc
+    case_studies/<name>/results/<run_name>/output_inference/inference_ERA5_20240101_20261231.nc
 """
 
 import os
@@ -46,7 +46,7 @@ from tqdm import tqdm
 
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
 
 # ── Sliding-window dataset ───────────────────────────────────────────────
@@ -113,9 +113,10 @@ def main():
 
     case_dir = Path(args.case_study)
     run_name = args.run_name
-    processed_dir = case_dir / 'data' / 'processed'
+    run_dirs = get_run_dirs(case_dir, run_name)
+    processed_dir = run_dirs['data_processed']
     data_dir = case_dir / 'data' / 'raw'
-    checkpoint_dir = case_dir / 'checkpoints' / run_name
+    checkpoint_dir = run_dirs['checkpoint']
 
     # ── Load configs ─────────────────────────────────────────────────────
     # Prefer archived configs in checkpoint dir; fall back to configs/ dir
@@ -317,7 +318,7 @@ def main():
         tag_start = (start_date or str(common_times[0])[:10]).replace('-', '')
         tag_end = (end_date or str(common_times[-1])[:10]).replace('-', '')
         output_filename = f'inference_ERA5_{tag_start}_{tag_end}.nc'
-        output_path = case_dir / 'outputs' / run_name / 'inference' / output_filename
+        output_path = run_dirs['output_inference'] / output_filename
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists():

@@ -10,9 +10,19 @@
 #SBATCH --exclusive                        # Dedicated node access, no sharing
 #SBATCH --account=pcmsc                    # Account to charge the job to
 #SBATCH --time=2-00:00:00               # Max wall time for cpu partition (D-HH:MM:SS)
-#SBATCH --output=cpu_pipeline_%j.log       # Standard output and error log
+#SBATCH --output=cpu_pipeline_%j.log       # Temporary location (moved into results/ at end)
 
 set -euo pipefail
+
+# Override the case study at submit time without editing this file, e.g.:
+#   sbatch --export=ALL,CASE_STUDY=case_studies/sf_bay_rtma scripts/cpu_tallgrass.slurm
+CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay}"
+RUN_NAME=$SLURM_JOB_ID
+LOG_DIR="${CASE_STUDY}/results/${RUN_NAME}/logs"
+
+# --- always copy SLURM log into results dir, even if the pipeline fails ---
+# $SLURM_SUBMIT_DIR is where sbatch was called from (log is written there regardless of cd below)
+trap 'mkdir -p "$LOG_DIR" && cp "${SLURM_SUBMIT_DIR}/cpu_pipeline_${SLURM_JOB_ID}.log" "$LOG_DIR/" 2>/dev/null || true' EXIT
 
 # --- threading: tell PyTorch/OpenMP/MKL to use all allocated cores ---
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
@@ -42,7 +52,9 @@ python -c "import cosmos_wind_cnn; print('import ok:', cosmos_wind_cnn.__file__)
 #   --skip-inference   (reuse existing inference output)
 #   --skip-eval        (skip evaluation vs CONUS404)
 srun python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
-    --run-name $SLURM_JOB_ID \
+    --case-study $CASE_STUDY \
+    --run-name $RUN_NAME \
     --gpus 0 \
     --num-workers 8
+
+# Note: SLURM log is copied to $LOG_DIR automatically via the EXIT trap above.

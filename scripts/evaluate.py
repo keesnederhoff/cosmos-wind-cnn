@@ -23,7 +23,7 @@ from cosmos_wind_cnn.data.dataset import WindDataset3D
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
 from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.metrics import calculate_all_metrics
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 from cosmos_wind_cnn.utils.visualization import plot_sample_predictions, plot_error_distribution
 
 
@@ -127,12 +127,13 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate trained model')
     parser.add_argument('--case-study', default='case_studies/sf_bay',
                         help='Path to case study directory')
-    parser.add_argument('--run-name', default='3663482',
+    parser.add_argument('--run-name', default='default',
                         help='Run name matching the one used during training')
     args = parser.parse_args()
 
     case_dir = Path(args.case_study)
     run_name = args.run_name
+    run_dirs = get_run_dirs(case_dir, run_name)
     config = load_config(case_dir / 'configs' / 'training.yaml')
 
     input_vars, output_vars, wind_pair_indices = parse_variable_config(config)
@@ -147,7 +148,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'\nDevice: {device}')
 
-    data_dir = case_dir / 'data' / 'processed'
+    data_dir = run_dirs['data_processed']
 
     test_dataset = WindDataset3D(
         netcdf_path=str(data_dir / 'test.nc'),
@@ -165,7 +166,7 @@ def main():
     )
 
     # Load model
-    checkpoint_path = case_dir / 'checkpoints' / run_name / 'best_model.pth'
+    checkpoint_path = run_dirs['checkpoint'] / 'best_model.pth'
     if not checkpoint_path.exists():
         print(f"Error: Checkpoint not found at {checkpoint_path}")
         return
@@ -203,7 +204,7 @@ def main():
         print(f"  {key}: {value:.4f}")
 
     # Save — namespaced by run_name so multiple runs don't overwrite each other
-    output_dir = case_dir / 'outputs' / run_name / 'evaluation'
+    output_dir = run_dirs['output_evaluation']
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = {

@@ -33,7 +33,7 @@ from cosmos_wind_cnn.data.dataset import WindDataset3D, WindDatasetInMemory
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
 from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.trainer import train_one_epoch, validate
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +94,7 @@ def main():
 
     case_dir = Path(args.case_study)
     run_name = args.run_name
+    run_dirs = get_run_dirs(case_dir, run_name)
     config = load_config(case_dir / 'configs' / 'training.yaml')
 
     if is_main:
@@ -133,7 +134,7 @@ def main():
         print("Loading Datasets")
         print("=" * 70)
 
-    data_dir = case_dir / 'data' / 'processed'
+    data_dir = run_dirs['data_processed']
     stats_path = str(data_dir / 'normalization_stats.pkl')
 
     DatasetClass = WindDatasetInMemory if config.get('load_in_memory', False) else WindDataset3D
@@ -243,8 +244,8 @@ def main():
     # Logging and checkpoints — rank 0 only, namespaced by run_name
     writer = None
     checkpoint_dir = None
-    log_dir = case_dir / 'logs' / run_name
-    checkpoint_dir = case_dir / 'checkpoints' / run_name
+    log_dir = run_dirs['logs']
+    checkpoint_dir = run_dirs['checkpoint']
     if is_main:
         log_dir.mkdir(parents=True, exist_ok=True)
         writer = SummaryWriter(log_dir=log_dir)
@@ -388,7 +389,7 @@ def main():
         print(f"\nNext steps:")
         print(f"  - View logs: tensorboard --logdir {log_dir}")
         print(f"  - Evaluate: python scripts/evaluate.py --case-study {case_dir}")
-        print(f"  - Inference: python scripts/inference.py --case-study {case_dir}")
+        print(f"  - Inference: python scripts/run_inference.py --case-study {case_dir} --run-name {run_name}")
 
     cleanup_distributed()
 
