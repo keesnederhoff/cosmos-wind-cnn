@@ -15,11 +15,20 @@
 
 set -euo pipefail
 
+# -- Storage location (OFF /home, on caldera PCMSC project space) --------------
+# Raw inputs are read from   $COSMOS_DATA_ROOT/<case_name>/raw
+# Run outputs are written to $COSMOS_RESULTS_ROOT/<case_name>/<run_name>
+# These two vars are read by src/cosmos_wind_cnn/utils/config.py
+# (get_data_dir / get_run_dirs). Edit the paths to relocate storage.
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/data
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/results
+
 # Override the case study at submit time without editing this file, e.g.:
 #   sbatch --export=ALL,CASE_STUDY=case_studies/sf_bay_rtma scripts/gpu_tallgrass.slurm
 CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay}"
 RUN_NAME=$SLURM_JOB_ID
-LOG_DIR="${CASE_STUDY}/results/${RUN_NAME}/logs"
+# Logs live under $COSMOS_RESULTS_ROOT/<case_name>/<job_id>/logs (mirrors get_run_dirs)
+LOG_DIR="${COSMOS_RESULTS_ROOT}/$(basename "$CASE_STUDY")/${RUN_NAME}/logs"
 
 # --- always copy SLURM log into results dir, even if the pipeline fails ---
 # $SLURM_SUBMIT_DIR is where sbatch was called from (log is written there regardless of cd below)
@@ -35,6 +44,8 @@ echo "Master node : $MASTER_ADDR"
 echo "Nodes       : $SLURM_NNODES"
 echo "GPUs / node : 4"
 echo "Total GPUs  : $((SLURM_NNODES * 4))"
+echo "Data root   : $COSMOS_DATA_ROOT"
+echo "Results root: $COSMOS_RESULTS_ROOT"
 
 # --- initialize conda for non-interactive shells ---
 source /home/cnederhoff/miniforge3/etc/profile.d/conda.sh
