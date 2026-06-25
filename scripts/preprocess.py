@@ -13,9 +13,7 @@ import argparse
 from pathlib import Path
 
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
-from cosmos_wind_cnn.data.regridder import Regridder
-from cosmos_wind_cnn.utils.config import load_config, get_run_dirs
-from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
+from cosmos_wind_cnn.utils.config import load_config
 
 
 def main():
@@ -28,16 +26,13 @@ def main():
     parser = argparse.ArgumentParser(description='Preprocess data for CNN training')
     parser.add_argument('--case-study', default='case_studies/sf_bay',
                         help='Path to case study directory (e.g., case_studies/sf_bay)')
-    parser.add_argument('--run-name', default='default',
-                        help='Run name — processed data stored in results/<run_name>/data_processed/')
     args = parser.parse_args()
 
     case_dir = Path(args.case_study)
-    run_dirs = get_run_dirs(case_dir, args.run_name)
     config = load_config(case_dir / 'configs' / 'preprocessing.yaml')
 
     data_dir = case_dir / 'data' / 'raw'
-    output_dir = run_dirs['data_processed']
+    output_dir = case_dir / 'data' / 'processed'
 
     print("=" * 70)
     print(f"Preprocessing: {case_dir.name}")
@@ -45,13 +40,7 @@ def main():
     print(f"\nData directory: {data_dir}")
     print(f"Output directory: {output_dir}")
 
-    preprocessor = NetCDFPreprocessor({
-        'data_dir': str(data_dir),
-        'physical_bounds': config.get('physical_bounds', {}),
-        'target_prefix': config.get('target_prefix', 'conus404_'),
-        'input_prefix': config.get('input_prefix', 'era5_'),
-        'regular_time_grid': config.get('regular_time_grid', False),
-    })
+    preprocessor = NetCDFPreprocessor({'data_dir': str(data_dir)})
 
     # Check files exist
     file_dict = config['file_dict']
@@ -76,15 +65,6 @@ def main():
     print(f"\nCombined dataset:")
     print(f"  Variables: {list(combined_ds.data_vars)}")
     print(f"  Time steps: {len(combined_ds.time)}")
-
-    # Save target grid reference for inference-time regridding
-    # (tiny NetCDF with just y/x coordinate arrays -- ~100 KB)
-    print("\n" + "=" * 70)
-    print("Saving target grid reference...")
-    print("=" * 70)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    regridder = Regridder.from_target_dataset(combined_ds)
-    regridder.save_reference_grid(output_dir / 'target_grid_reference.nc')
 
     # Split
     print("\n" + "=" * 70)
@@ -114,27 +94,14 @@ def main():
         train_ds, output_dir / 'normalization_stats.pkl'
     )
 
-    # Visualise normalization statistics (scalar summary)
-    print("\n" + "=" * 70)
-    print("Plotting normalization statistics...")
-    print("=" * 70)
-    plot_normalization_stats(stats, output_dir)
-
-    # Visualise spatial statistics (time-mean and time-std per variable)
-    print("\n" + "=" * 70)
-    print("Plotting spatial statistics...")
-    print("=" * 70)
-    plot_spatial_stats(train_ds, output_dir)
-
     print("\n" + "=" * 70)
     print("Preprocessing Complete!")
     print("=" * 70)
     print(f"\nOutput files in: {output_dir}")
-    print(f"  train.nc                 - {len(train_ds.time)} timesteps")
-    print(f"  val.nc                   - {len(val_ds.time)} timesteps")
-    print(f"  test.nc                  - {len(test_ds.time)} timesteps")
-    print(f"  normalization_stats.pkl  - {len(stats)} variables")
-    print(f"  target_grid_reference.nc - y/x coords for inference regridding")
+    print(f"  train.nc      - {len(train_ds.time)} timesteps")
+    print(f"  val.nc        - {len(val_ds.time)} timesteps")
+    print(f"  test.nc       - {len(test_ds.time)} timesteps")
+    print(f"  normalization_stats.pkl - {len(stats)} variables")
     print(f"\nNext step: python scripts/train.py --case-study {case_dir}")
 
 

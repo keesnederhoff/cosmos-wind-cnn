@@ -43,6 +43,10 @@ Thumbs.db
 **/outputs/**
 !**/outputs/.gitkeep
 
+# Per-run output trees (results/<run_id>/...) — large, regenerated, never tracked
+**/results/**
+!**/results/.gitkeep
+
 # Large files
 *.h5
 *.hdf5

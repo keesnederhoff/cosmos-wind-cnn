@@ -1,0 +1,58 @@
+# SF Bay RTMA Case Study - Training Configuration
+
+# Variable Pairs (high-resolution target : low-resolution input)
+variable_pairs:
+  wind_u:
+    high_res: 'rtma_u'
+    low_res: 'era5_u'
+  wind_v:
+    high_res: 'rtma_v'
+    low_res: 'era5_v'
+  air_temperature:
+    high_res: 'rtma_air_temp'
+    low_res: 'era5_air_temp'
+  dew_point_temperature:
+    high_res: 'rtma_dew_temp'
+    low_res: 'era5_dew_temp'
+  pressure:
+    high_res: 'rtma_pressure'
+    low_res: 'era5_pressure'
+  rainfall:
+    high_res: 'rtma_rain'
+    low_res: 'era5_rain'
+
+# Model Architecture (same as sf_bay)
+base_channels: 16
+sequence_length: 6
+forecast_horizon: 0
+dropout_rate: 0.1
+
+# Training Parameters
+batch_size: 32
+num_epochs: 200
+learning_rate: 0.0003
+weight_decay: 0.001
+num_workers: 8
+
+# Data Loading
+load_in_memory: true
+train_stride: 1
+val_stride: 6
+
+# Loss Function Weights
+loss_alpha: 1.0
+loss_beta: 0.5
+loss_gamma: 0.3
+
+# Learning Rate Scheduler
+scheduler_patience: 5
+scheduler_factor: 0.5
+
+# Early Stopping
+early_stopping_patience: 20
+
+# Save checkpoint every N epochs
+save_every: 10
+
+# Coordinate Reference System for output NetCDFs
+crs: 'EPSG:32610'  # UTM Zone 10N

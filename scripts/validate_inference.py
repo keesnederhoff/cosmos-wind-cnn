@@ -10,7 +10,7 @@ Compares the downscaled model predictions against:
 Usage:
     python scripts/validate_inference.py [--n-points 50] [--seed 42] [--run-id 3663482]
 
-Outputs (under outputs/<run_id>/inference/validation/):
+Outputs (under results/<run_id>/output_evaluation/):
     path1/   skill_map_wind_speed.png, spatial_metrics.csv
     path2/   <station_name>/timeseries_<var>.png, metrics.json
     summary.json, path2_metrics_table.csv, validation.log
@@ -63,8 +63,9 @@ except ImportError:
 # Paths & config
 # ─────────────────────────────────────────────────────────────────────────────
 
+from cosmos_wind_cnn.utils.config import get_run_dirs
+
 CASE_STUDY_DIR  = Path(r"d:\Git\cosmos-wind-cnn\case_studies\sf_bay")
-PROCESSED_DIR   = CASE_STUDY_DIR / "data" / "processed"
 NDBC_DIR        = Path(r"d:\data\NDBC\sf_bay_winds")
 WHALES_TALE_DIR = Path(r"m:\emeryville_crescent\01_data\whales_tale")
 
@@ -232,25 +233,33 @@ def met_wind_to_uv(speed, dir_from_deg):
 # Data loading
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_inference(run_id):
-    fpath = CASE_STUDY_DIR / "outputs" / str(run_id) / "inference" / "full_record.nc"
+def load_inference(run_dirs):
+    """Load inference output — tries all .nc files in output_inference dir."""
+    inf_dir = run_dirs['output_inference']
+    # Try full_record first, then glob for any .nc
+    fpath = inf_dir / "full_record.nc"
     if not fpath.exists():
-        raise FileNotFoundError(f"Inference file not found: {fpath}")
+        nc_files = sorted(inf_dir.glob("*.nc"))
+        if nc_files:
+            fpath = nc_files[0]
+        else:
+            raise FileNotFoundError(f"No inference output found in {inf_dir}")
     logging.info(f"Loading inference: {fpath}")
     return xr.open_dataset(fpath, chunks={"time": 500})
 
 
-def load_processed():
+def load_processed(run_dirs):
     """Lazily open and concatenate train/val/test splits, sorted by time."""
+    processed_dir = run_dirs['data_processed']
     splits = []
     for name in ("train", "val", "test"):
-        p = PROCESSED_DIR / f"{name}.nc"
+        p = processed_dir / f"{name}.nc"
         if p.exists():
             splits.append(xr.open_dataset(p, chunks="auto"))
         else:
             logging.warning(f"Processed split not found: {p}")
     if not splits:
-        raise FileNotFoundError(f"No processed data found in {PROCESSED_DIR}")
+        raise FileNotFoundError(f"No processed data found in {processed_dir}")
     ds = xr.concat(splits, dim="time").sortby("time")
     logging.info(f"Processed data: {len(ds.time)} timesteps  "
                  f"({pd.Timestamp(ds.time.values[0]).date()} – "
@@ -851,11 +860,11 @@ def run_path2(inference_ds, processed_ds, output_dir):
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
 
-def write_summary(p1_metrics, p2_metrics, output_dir, run_id):
+def write_summary(p1_metrics, p2_metrics, output_dir, run_id, run_dirs):
     summary = {
         "generated":  datetime.utcnow().isoformat() + "Z",
         "run_id":     str(run_id),
-        "inference":  str(CASE_STUDY_DIR / "outputs" / str(run_id) / "inference" / "full_record.nc"),
+        "inference":  str(run_dirs['output_inference']),
         "path1": {
             "n_metric_records": len(p1_metrics),
             "median_skill_wind_speed": float(np.nanmedian(
@@ -926,7 +935,7 @@ def write_summary(p1_metrics, p2_metrics, output_dir, run_id):
 def parse_args():
     p = argparse.ArgumentParser(description="Validate cosmos-wind-cnn inference output")
     p.add_argument("--run-id",   default="3663482",
-                   help="Run ID (subdirectory under outputs/)")
+                   help="Run ID (subdirectory under results/)")
     p.add_argument("--n-points", type=int, default=50,
                    help="Number of random grid points for Path 1 (default: 50)")
     p.add_argument("--seed",     type=int, default=42,
@@ -941,8 +950,8 @@ def parse_args():
 def main():
     args = parse_args()
 
-    output_dir = (CASE_STUDY_DIR / "outputs" / args.run_id
-                  / "inference" / "validation")
+    run_dirs = get_run_dirs(CASE_STUDY_DIR, args.run_id)
+    output_dir = run_dirs['output_evaluation'] / "validation"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
@@ -958,8 +967,8 @@ def main():
     logging.info(f"Output directory: {output_dir}")
 
     # Load datasets
-    inference_ds = load_inference(args.run_id)
-    processed_ds = load_processed()
+    inference_ds = load_inference(run_dirs)
+    processed_ds = load_processed(run_dirs)
 
     p1_metrics = []
     p2_metrics = []
@@ -978,7 +987,7 @@ def main():
             output_dir=output_dir / "path2",
         )
 
-    write_summary(p1_metrics, p2_metrics, output_dir, args.run_id)
+    write_summary(p1_metrics, p2_metrics, output_dir, args.run_id, run_dirs)
 
     inference_ds.close()
     processed_ds.close()

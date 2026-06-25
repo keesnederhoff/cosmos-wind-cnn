@@ -1,0 +1,40 @@
+# SF Bay RTMA Case Study - Inference Preprocessing Configuration
+#
+# Regrid coarse ERA5 (or CMIP6 later) onto the RTMA target grid for inference.
+# The model's targets are RTMA, but its inputs are always the coarse fields.
+
+sources:
+  era5_u:
+    file: 'ERA5_eastward_wind_1940_2026_UTM.nc'
+    source_var: null
+  era5_v:
+    file: 'ERA5_northward_wind_1940_2026_UTM.nc'
+    source_var: null
+  era5_air_temp:
+    file: 'ERA5_air_temperature_1940_2026_UTM.nc'
+    source_var: null
+  era5_dew_temp:
+    file: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
+    source_var: null
+  era5_pressure:
+    file: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
+    source_var: null
+  era5_rain:
+    file: 'ERA5_precipitation_1940_2026_UTM.nc'
+    source_var: null
+
+# Full ERA5 record (long hindcast). Note: the model is trained only on 2011-2026,
+# so inference before ~2011 extrapolates — treat early years as lower-confidence.
+start_date: '1940-01-01'
+end_date: '2027-01-01'
+
+interpolation_method: 'linear'
+compression_level: 1
+
+physical_bounds:
+  era5_u:        {min: -100,  max: 100}
+  era5_v:        {min: -100,  max: 100}
+  era5_air_temp: {min: 220,   max: 330}
+  era5_dew_temp: {min: 200,   max: 315}
+  era5_pressure: {min: 85000, max: 110000}
+  era5_rain:     {min: 0,     max: 200}

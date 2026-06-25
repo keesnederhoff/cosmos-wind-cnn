@@ -1,0 +1,66 @@
+# SF Bay RTMA Case Study - Preprocessing Configuration
+#
+# Target: RTMA 2.5 km (observation-constrained analysis), 2011-2026
+# Input:  ERA5 ~31 km, interpolated onto the RTMA grid
+
+# Prefix roles (generalised pipeline): target_ = high-res reference grid, input_ = coarse
+target_prefix: 'rtma_'
+input_prefix: 'era5_'
+
+# Reindex onto a complete hourly axis (NaN-fill ~1% missing RTMA hours) before splitting.
+# The dataset's NaN-window dropping then excludes any sequence window spanning a gap.
+regular_time_grid: true
+
+# File mappings: variable_key -> filename in data/raw/
+file_dict:
+
+  # Wind U / V
+  rtma_u: 'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc'
+  era5_u: 'ERA5_eastward_wind_1940_2026_UTM.nc'
+  rtma_v: 'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc'
+  era5_v: 'ERA5_northward_wind_1940_2026_UTM.nc'
+
+  # Air temperature
+  rtma_air_temp: 'RTMA_SFbay_2p5km_air_temperature_2011_2026_UTM10.nc'
+  era5_air_temp: 'ERA5_air_temperature_1940_2026_UTM.nc'
+
+  # Dew point temperature
+  rtma_dew_temp: 'RTMA_SFbay_2p5km_dew_point_temperature_2011_2026_UTM10.nc'
+  era5_dew_temp: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
+
+  # Air pressure (RTMA = MSL pressure; ERA5 = msl-derived — consistent)
+  rtma_pressure: 'RTMA_SFbay_2p5km_air_pressure_fixed_height_2011_2026_UTM10.nc'
+  era5_pressure: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
+
+  # Precipitation (mm/hr)
+  rtma_rain: 'RTMA_SFbay_2p5km_precipitation_2011_2026_UTM10.nc'
+  era5_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
+
+# Time period — full ERA5 ∩ RTMA overlap
+start_date: '2011-01-01'
+end_date: '2026-06-18'
+
+# Data split ratios
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15
+compression_level: 1
+
+# ── Physical value bounds (values outside [min, max] -> NaN) ──────────────────
+physical_bounds:
+  rtma_u:        {min: -100,  max: 100}
+  era5_u:        {min: -100,  max: 100}
+  rtma_v:        {min: -100,  max: 100}
+  era5_v:        {min: -100,  max: 100}
+
+  rtma_air_temp: {min: 220, max: 330}
+  era5_air_temp: {min: 220, max: 330}
+
+  rtma_dew_temp: {min: 200, max: 315}
+  era5_dew_temp: {min: 200, max: 315}
+
+  rtma_pressure: {min: 85000, max: 110000}
+  era5_pressure: {min: 85000, max: 110000}
+
+  rtma_rain:     {min: 0, max: 200}
+  era5_rain:     {min: 0, max: 200}
