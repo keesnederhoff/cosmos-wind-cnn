@@ -1,31 +1,35 @@
 # SF Bay Case Study - Training Configuration
 
+# Provenance labels for output metadata + plots (model-agnostic keys below)
+hr_source: CONUS404
+lr_source: ERA5
+
 # Variable Pairs (high-resolution target : low-resolution input)
 variable_pairs:
   wind_u:
-    high_res: 'conus404_u'
-    low_res: 'era5_u'
+    high_res: 'hr_u'
+    low_res: 'lr_u'
   wind_v:
-    high_res: 'conus404_v'
-    low_res: 'era5_v'
+    high_res: 'hr_v'
+    low_res: 'lr_v'
   air_temperature:
-    high_res: 'conus404_air_temp'
-    low_res: 'era5_air_temp'
+    high_res: 'hr_air_temp'
+    low_res: 'lr_air_temp'
   dew_point_temperature:
-    high_res: 'conus404_dew_temp'
-    low_res: 'era5_dew_temp'
+    high_res: 'hr_dew_temp'
+    low_res: 'lr_dew_temp'
   pressure:
-    high_res: 'conus404_pressure'
-    low_res: 'era5_pressure'
+    high_res: 'hr_pressure'
+    low_res: 'lr_pressure'
   solar_radiation:
-    high_res: 'conus404_solar'
-    low_res: 'era5_solar'
+    high_res: 'hr_solar'
+    low_res: 'lr_solar'
   thermal_radiation:
-    high_res: 'conus404_thermal'
-    low_res: 'era5_thermal'
+    high_res: 'hr_thermal'
+    low_res: 'lr_thermal'
   rainfall:
-    high_res: 'conus404_rain'
-    low_res: 'era5_rain'
+    high_res: 'hr_rain'
+    low_res: 'lr_rain'
 
 # Model Architecture
 # Statistical downscaling: learn ERA5 (coarse) → CONUS404 (fine)

@@ -1,25 +1,29 @@
 # SF Bay RTMA Case Study - Training Configuration
 
+# Provenance labels for output metadata + plots (model-agnostic keys below)
+hr_source: RTMA
+lr_source: ERA5
+
 # Variable Pairs (high-resolution target : low-resolution input)
 variable_pairs:
   wind_u:
-    high_res: 'rtma_u'
-    low_res: 'era5_u'
+    high_res: 'hr_u'
+    low_res: 'lr_u'
   wind_v:
-    high_res: 'rtma_v'
-    low_res: 'era5_v'
+    high_res: 'hr_v'
+    low_res: 'lr_v'
   air_temperature:
-    high_res: 'rtma_air_temp'
-    low_res: 'era5_air_temp'
+    high_res: 'hr_air_temp'
+    low_res: 'lr_air_temp'
   dew_point_temperature:
-    high_res: 'rtma_dew_temp'
-    low_res: 'era5_dew_temp'
+    high_res: 'hr_dew_temp'
+    low_res: 'lr_dew_temp'
   pressure:
-    high_res: 'rtma_pressure'
-    low_res: 'era5_pressure'
+    high_res: 'hr_pressure'
+    low_res: 'lr_pressure'
   rainfall:
-    high_res: 'rtma_rain'
-    low_res: 'era5_rain'
+    high_res: 'hr_rain'
+    low_res: 'lr_rain'
 
 # Model Architecture (same as sf_bay)
 base_channels: 16

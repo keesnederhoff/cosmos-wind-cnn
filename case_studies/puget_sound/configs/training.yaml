@@ -3,23 +3,27 @@
 # TODO: Adjust hyperparameters as needed for the Puget Sound domain.
 # Start with the same settings as SF Bay and tune from there.
 
+# Provenance labels for output metadata + plots (model-agnostic keys below)
+hr_source: CONUS404
+lr_source: ERA5
+
 # Variable Pairs (high-resolution target : low-resolution input)
 variable_pairs:
   wind_u:
-    high_res: 'conus404_u'
-    low_res: 'era5_u'
+    high_res: 'hr_u'
+    low_res: 'lr_u'
   wind_v:
-    high_res: 'conus404_v'
-    low_res: 'era5_v'
+    high_res: 'hr_v'
+    low_res: 'lr_v'
   temperature:
-    high_res: 'conus404_temp'
-    low_res: 'era5_temp'
+    high_res: 'hr_temp'
+    low_res: 'lr_temp'
   pressure:
-    high_res: 'conus404_pressure'
-    low_res: 'era5_pressure'
+    high_res: 'hr_pressure'
+    low_res: 'lr_pressure'
   radiation:
-    high_res: 'conus404_radiation'
-    low_res: 'era5_radiation'
+    high_res: 'hr_radiation'
+    low_res: 'lr_radiation'
 
 additional_inputs:
   - 'cloud_area'

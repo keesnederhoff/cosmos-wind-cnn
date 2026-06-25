@@ -4,22 +4,22 @@
 # The model's targets are RTMA, but its inputs are always the coarse fields.
 
 sources:
-  era5_u:
+  lr_u:
     file: 'ERA5_eastward_wind_1940_2026_UTM.nc'
     source_var: null
-  era5_v:
+  lr_v:
     file: 'ERA5_northward_wind_1940_2026_UTM.nc'
     source_var: null
-  era5_air_temp:
+  lr_air_temp:
     file: 'ERA5_air_temperature_1940_2026_UTM.nc'
     source_var: null
-  era5_dew_temp:
+  lr_dew_temp:
     file: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
     source_var: null
-  era5_pressure:
+  lr_pressure:
     file: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
     source_var: null
-  era5_rain:
+  lr_rain:
     file: 'ERA5_precipitation_1940_2026_UTM.nc'
     source_var: null
 
@@ -32,9 +32,9 @@ interpolation_method: 'linear'
 compression_level: 1
 
 physical_bounds:
-  era5_u:        {min: -100,  max: 100}
-  era5_v:        {min: -100,  max: 100}
-  era5_air_temp: {min: 220,   max: 330}
-  era5_dew_temp: {min: 200,   max: 315}
-  era5_pressure: {min: 85000, max: 110000}
-  era5_rain:     {min: 0,     max: 200}
+  lr_u:        {min: -100,  max: 100}
+  lr_v:        {min: -100,  max: 100}
+  lr_air_temp: {min: 220,   max: 330}
+  lr_dew_temp: {min: 200,   max: 315}
+  lr_pressure: {min: 85000, max: 110000}
+  lr_rain:     {min: 0,     max: 200}

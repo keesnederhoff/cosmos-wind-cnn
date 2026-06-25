@@ -9,15 +9,15 @@
 # Keys must match the variable pair names in training.yaml
 file_dict:
   # High-resolution (target) and low-resolution (input) pairs.
-  # Each pair has a conus404_* (or other high-res) and era5_* entry.
-  conus404_u: 'YOUR_HIGH_RES_U_WIND.nc'
-  era5_u: 'YOUR_LOW_RES_U_WIND.nc'
+  # Each pair has an hr_* (high-res) and lr_* (low-res) entry.
+  hr_u: 'YOUR_HIGH_RES_U_WIND.nc'
+  lr_u: 'YOUR_LOW_RES_U_WIND.nc'
 
-  conus404_v: 'YOUR_HIGH_RES_V_WIND.nc'
-  era5_v: 'YOUR_LOW_RES_V_WIND.nc'
+  hr_v: 'YOUR_HIGH_RES_V_WIND.nc'
+  lr_v: 'YOUR_LOW_RES_V_WIND.nc'
 
-  conus404_temp: 'YOUR_HIGH_RES_TEMPERATURE.nc'
-  era5_temp: 'YOUR_LOW_RES_TEMPERATURE.nc'
+  hr_temp: 'YOUR_HIGH_RES_TEMPERATURE.nc'
+  lr_temp: 'YOUR_LOW_RES_TEMPERATURE.nc'
 
   # Add more variable pairs as needed...
 

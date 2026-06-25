@@ -6,36 +6,36 @@ file_dict:
   # ── Paired variables (ERA5 input + CONUS404 target) ──────────────────────────
 
   # Wind U component (eastward)
-  conus404_u: 'CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc'
-  era5_u: 'ERA5_eastward_wind_1940_2026_UTM.nc'
+  hr_u: 'CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc'
+  lr_u: 'ERA5_eastward_wind_1940_2026_UTM.nc'
 
   # Wind V component (northward)
-  conus404_v: 'CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc'
-  era5_v: 'ERA5_northward_wind_1940_2026_UTM.nc'
+  hr_v: 'CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc'
+  lr_v: 'ERA5_northward_wind_1940_2026_UTM.nc'
 
   # Air Temperature
-  conus404_air_temp: 'CONUS404_SFbay_4km_air_temperature_1979_2021_UTM10.nc'
-  era5_air_temp: 'ERA5_air_temperature_1940_2026_UTM.nc'
+  hr_air_temp: 'CONUS404_SFbay_4km_air_temperature_1979_2021_UTM10.nc'
+  lr_air_temp: 'ERA5_air_temperature_1940_2026_UTM.nc'
 
   # Dew Point Temperature
-  conus404_dew_temp: 'CONUS404_SFbay_4km_dew_point_temperature_1979_2021_UTM10.nc'
-  era5_dew_temp: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
+  hr_dew_temp: 'CONUS404_SFbay_4km_dew_point_temperature_1979_2021_UTM10.nc'
+  lr_dew_temp: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
 
   # Air Pressure
-  conus404_pressure: 'CONUS404_SFbay_4km_air_pressure_fixed_height_1979_2021_UTM10.nc'
-  era5_pressure: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
+  hr_pressure: 'CONUS404_SFbay_4km_air_pressure_fixed_height_1979_2021_UTM10.nc'
+  lr_pressure: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
 
   # Surface Solar Radiation
-  conus404_solar: 'CONUS404_SFbay_4km_surface_solar_radiation_1979_2021_UTM10.nc'
-  era5_solar: 'ERA5_surface_solar_radiation_1940_2026_UTM.nc'
+  hr_solar: 'CONUS404_SFbay_4km_surface_solar_radiation_1979_2021_UTM10.nc'
+  lr_solar: 'ERA5_surface_solar_radiation_1940_2026_UTM.nc'
 
   # Surface Thermal Radiation (downwards)
-  conus404_thermal: 'CONUS404_SFbay_4km_surface_thermal_radiation_downwards_1979_2021_UTM10.nc'
-  era5_thermal: 'ERA5_surface_thermal_radiation_1940_2026_UTM.nc'
+  hr_thermal: 'CONUS404_SFbay_4km_surface_thermal_radiation_downwards_1979_2021_UTM10.nc'
+  lr_thermal: 'ERA5_surface_thermal_radiation_1940_2026_UTM.nc'
 
   # Rainfall / Precipitation
-  conus404_rain: 'CONUS404_SFbay_4km_rainfall_1979_2021_UTM10.nc'
-  era5_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
+  hr_rain: 'CONUS404_SFbay_4km_rainfall_1979_2021_UTM10.nc'
+  lr_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
 
 # Time period to consider for overlap
 # CONUS404 runs 1979-2021; ERA5 files cover 1978-2022.
@@ -57,37 +57,37 @@ compression_level: 1  # 0 = none (fastest), 1-9 = zlib levels
 physical_bounds:
 
   # Wind components (m/s) — fastest recorded surface winds ~85 m/s (Cat 5)
-  conus404_u:    {min: -100,  max: 100}
-  era5_u:        {min: -100,  max: 100}
-  conus404_v:    {min: -100,  max: 100}   # catches the 1e35 fill-value artefact
-  era5_v:        {min: -100,  max: 100}
+  hr_u:    {min: -100,  max: 100}
+  lr_u:    {min: -100,  max: 100}
+  hr_v:    {min: -100,  max: 100}   # catches the 1e35 fill-value artefact
+  lr_v:    {min: -100,  max: 100}
 
   # Air temperature (K) — death valley ~330 K, polar vortex ~220 K
-  conus404_air_temp: {min: 220, max: 330}
-  era5_air_temp:     {min: 220, max: 330}
+  hr_air_temp: {min: 220, max: 330}
+  lr_air_temp: {min: 220, max: 330}
 
   # Dew point temperature (K) — always ≤ air temp; lower bound generous
-  conus404_dew_temp: {min: 200, max: 315}
-  era5_dew_temp:     {min: 200, max: 315}
+  hr_dew_temp: {min: 200, max: 315}
+  lr_dew_temp: {min: 200, max: 315}
 
   # Air pressure (Pa) — sea-level range 87,000–108,400 Pa globally
-  conus404_pressure: {min: 85000, max: 110000}
-  era5_pressure:     {min: 85000, max: 110000}
+  hr_pressure: {min: 85000, max: 110000}
+  lr_pressure: {min: 85000, max: 110000}
 
   # Solar radiation (W/m²)
   # CONUS404: net or downwelling SW — always ≥ 0, max ~1000 W/m² at surface
   # ERA5:     similar convention; small negatives possible from spectral rounding
-  conus404_solar: {min:  -10, max: 1100}
-  era5_solar:     {min:  -10, max: 1100}
+  hr_solar: {min:  -10, max: 1100}
+  lr_solar: {min:  -10, max: 1100}
 
   # Thermal / longwave radiation (W/m²)
   # CONUS404: downwelling LW — always positive, ~150–500 W/m²
   # ERA5:     net LW (down−up) — negative over most surfaces, ~−200 to +50 W/m²
-  conus404_thermal: {min:  100, max:  550}
-  era5_thermal:     {min: -250, max:  100}
+  hr_thermal: {min:  100, max:  550}
+  lr_thermal: {min: -250, max:  100}
 
   # Rainfall / precipitation — both in mm/hr after ERA5 unit conversion
   # ERA5 tp is accumulated m/timestep; write_era5_meteo_CNN.py converts to mm/hr (×1000)
   # so units now match CONUS404 (mm/hr)
-  conus404_rain: {min: 0, max: 200}
-  era5_rain:     {min: 0, max: 200}
+  hr_rain: {min: 0, max: 200}
+  lr_rain: {min: 0, max: 200}
