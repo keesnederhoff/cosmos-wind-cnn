@@ -112,7 +112,6 @@ cosmos-wind-cnn/
 │   ├── sf_bay_conus404/         # San Francisco Bay, CONUS404 HR (working example)
 │   ├── puget_sound/             # Puget Sound (in progress)
 │   └── _template/               # Template for new case studies
-├── notebooks/                   # Data exploration and validation
 ├── docs/                        # Documentation
 ├── tests/                       # Unit tests
 └── pyproject.toml               # Package definition

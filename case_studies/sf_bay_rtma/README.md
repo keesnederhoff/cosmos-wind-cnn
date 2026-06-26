@@ -72,5 +72,4 @@ On HPC the Tallgrass SLURM scripts already export both vars pointing at caldera 
    `$COSMOS_RESULTS_ROOT/sf_bay_rtma/results/<job_id>/`. A CPU-only run uses
    `cpu_tallgrass.slurm` the same way. After pulling new code on HPC, `pip install -e .`.
 
-See `docs/adding_case_study.md` for the full workflow and
-`docs/superpowers/specs/2026-06-22-rtma-sf-bay-downscaling-design.md` for the design.
+See `docs/adding_case_study.md` for the full workflow.
