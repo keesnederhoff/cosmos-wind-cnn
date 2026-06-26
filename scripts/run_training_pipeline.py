@@ -476,11 +476,12 @@ def main():
     )
     parser.add_argument('--case-study', default='case_studies/sf_bay_conus404')
     parser.add_argument('--data-root', default=None,
-                        help='Base dir for raw input data; reads <data-root>/<case_name>/raw. '
-                             'Overrides COSMOS_DATA_ROOT. Default: <case-study>/data/raw')
+                        help='Base dir for raw input data; reads <data-root>/<case_name>/raw_data. '
+                             'Sets COSMOS_DATA_ROOT for this run (one of the two is required).')
     parser.add_argument('--results-root', default=None,
-                        help='Base dir for run outputs; writes <results-root>/<case_name>/<run-name>. '
-                             'Overrides COSMOS_RESULTS_ROOT. Default: <case-study>/results')
+                        help='Base dir for run outputs; writes '
+                             '<results-root>/<case_name>/results/<run-name>. '
+                             'Sets COSMOS_RESULTS_ROOT for this run (one of the two is required).')
     parser.add_argument('--run-name', default='default',
                         help='Name for this run (used for checkpoint/output dirs)')
     parser.add_argument('--gpus', type=int, default=1,
