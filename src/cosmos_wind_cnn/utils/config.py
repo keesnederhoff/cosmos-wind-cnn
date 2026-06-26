@@ -18,7 +18,7 @@ def get_run_dirs(case_dir, run_name: str) -> dict:
     """
     Return the canonical directory layout for a single run.
 
-    All run artefacts live under  ``<case_dir>/results/<run_name>/``.
+    All run artefacts live under  ``<COSMOS_RESULTS_ROOT>/<case_name>/results/<run_name>/``.
 
     Parameters
     ----------
@@ -39,10 +39,14 @@ def get_run_dirs(case_dir, run_name: str) -> dict:
     """
     case_dir = Path(case_dir)
     _results_root = os.environ.get('COSMOS_RESULTS_ROOT')
-    if _results_root:
-        run_root = Path(_results_root) / case_dir.name / str(run_name)
-    else:
-        run_root = case_dir / 'results' / str(run_name)
+    if not _results_root:
+        raise RuntimeError(
+            "COSMOS_RESULTS_ROOT is not set. Point it at your results storage base "
+            "(run outputs go to <COSMOS_RESULTS_ROOT>/<case_name>/results/<run_name>/).\n"
+            "  Windows:  set COSMOS_RESULTS_ROOT=G:\\03-downscaling_meteo_cnn\n"
+            "  Linux:    export COSMOS_RESULTS_ROOT=/path/to/storage"
+        )
+    run_root = Path(_results_root) / case_dir.name / 'results' / str(run_name)
     return {
         'run_root':          run_root,
         'checkpoint':        run_root / 'checkpoint',
@@ -160,14 +164,18 @@ def wind_var_names(variable_pairs):
 
 
 def get_data_dir(case_dir):
-    """Directory holding a case study's raw NetCDF inputs.
+    """Directory holding a case study's raw NetCDF inputs (shared across runs).
 
-    Configurable so raw data can live off /home (e.g. on /caldera):
-      * COSMOS_DATA_ROOT env var (or pipeline --data-root) -> <root>/<case_name>/raw
-      * otherwise the in-repo default                      -> <case_dir>/data/raw
+    Read from ``<COSMOS_DATA_ROOT>/<case_name>/raw_data``. Data lives OUTSIDE the
+    repo, so COSMOS_DATA_ROOT must be set; raises RuntimeError if it is not.
     """
     case_dir = Path(case_dir)
     root = os.environ.get('COSMOS_DATA_ROOT')
-    if root:
-        return Path(root) / case_dir.name / 'raw'
-    return case_dir / 'data' / 'raw'
+    if not root:
+        raise RuntimeError(
+            "COSMOS_DATA_ROOT is not set. Point it at your raw-data storage base "
+            "(raw inputs are read from <COSMOS_DATA_ROOT>/<case_name>/raw_data/).\n"
+            "  Windows:  set COSMOS_DATA_ROOT=G:\\03-downscaling_meteo_cnn\n"
+            "  Linux:    export COSMOS_DATA_ROOT=/path/to/storage"
+        )
+    return Path(root) / case_dir.name / 'raw_data'
