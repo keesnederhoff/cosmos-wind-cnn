@@ -257,6 +257,51 @@ class Regridder:
 
         return result
 
+    def regrid_static(
+        self,
+        ds: xr.Dataset,
+        var_map: Dict[str, str],
+        physical_bounds: Optional[Dict[str, Dict]] = None,
+    ) -> xr.Dataset:
+        """Interpolate STATIC (no-time) field(s) onto the target grid.
+
+        Mirror of :meth:`regrid` for input-only fields without a ``time``
+        dimension (e.g. terrain / surface height).  Returns variables on the
+        target grid ``(y, x)``; the caller broadcasts them over the time axis.
+        """
+        physical_bounds = physical_bounds or {}
+        data_vars = {}
+        for output_name, source_var in var_map.items():
+            if source_var is None:
+                source_var = list(ds.data_vars)[0]
+            if source_var not in ds.data_vars:
+                raise KeyError(
+                    f"Variable '{source_var}' not found in dataset.  "
+                    f"Available: {list(ds.data_vars)}"
+                )
+            da = ds[source_var]
+            da = self._standardize_coords(da)
+            if 'time' in da.dims:
+                raise ValueError(
+                    f"regrid_static expected a no-time field for "
+                    f"'{output_name}', but it has a time dimension."
+                )
+            bounds = physical_bounds.get(output_name)
+            if bounds:
+                da = self._mask_physical_bounds(da, output_name, bounds)
+            tgt_ny, tgt_nx = len(self.target_y), len(self.target_x)
+            src_ny, src_nx = da.sizes.get('y', '?'), da.sizes.get('x', '?')
+            print(f"  Interpolating static {output_name} ({src_ny}x{src_nx}) "
+                  f"-> target grid ({tgt_ny}x{tgt_nx}) [{self.method}]...")
+            da = da.interp(y=self.target_y, x=self.target_x, method=self.method)
+            da.name = output_name
+            data_vars[output_name] = da
+        result = xr.Dataset(data_vars)
+        for coord, attrs in self.target_attrs.items():
+            if coord in result.coords:
+                result[coord].attrs.update(attrs)
+        return result
+
     # ------------------------------------------------------------------
     # Helpers (static-ish)
     # ------------------------------------------------------------------

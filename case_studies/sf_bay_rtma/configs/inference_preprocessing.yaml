@@ -22,6 +22,13 @@ sources:
   lr_rain:
     file: 'ERA5_precipitation_1940_2026_UTM.nc'
     source_var: null
+  # Extra input-only channels (must match training additional_inputs)
+  lr_cloud:
+    file: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
+    source_var: null
+  static_terrain:
+    file: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
+    source_var: null
 
 # Full ERA5 record (long hindcast). Note: the model is trained only on 2011-2026,
 # so inference before ~2011 extrapolates — treat early years as lower-confidence.
@@ -38,3 +45,5 @@ physical_bounds:
   lr_dew_temp: {min: 200,   max: 315}
   lr_pressure: {min: 85000, max: 110000}
   lr_rain:     {min: 0,     max: 200}
+  lr_cloud:       {min: -0.1, max: 1.1}     # ERA5 cloud area fraction (0-1)
+  static_terrain: {min: -500, max: 5000}    # surface height (m)

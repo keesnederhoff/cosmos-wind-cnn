@@ -212,7 +212,8 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     sources = inf_config['sources']
     physical_bounds = inf_config.get('physical_bounds', {})
 
-    regridded_vars = {}
+    regridded_vars = {}   # time-varying inputs -> (time, y, x)
+    static_vars = {}      # static, no-time inputs -> (y, x), broadcast below
     for var_name, source_cfg in sources.items():
         filepath = data_dir / source_cfg['file']
         if not filepath.exists():
@@ -225,6 +226,17 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
 
         var_map = {var_name: source_var}
         bounds = {var_name: physical_bounds[var_name]} if var_name in physical_bounds else {}
+
+        # Static input-only fields (e.g. terrain) have no time dim: interp onto
+        # the target grid now, then broadcast over the common time axis below
+        # (mirrors training preprocessing).
+        if 'time' not in ds[source_var].dims:
+            regridded = regridder.regrid_static(ds, var_map=var_map,
+                                                physical_bounds=bounds)
+            static_vars[var_name] = regridded[var_name]
+            ds.close()
+            continue
+
         regridded = regridder.regrid(ds, var_map=var_map,
                                      physical_bounds=bounds,
                                      start_date=load_start,
@@ -232,7 +244,7 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
         regridded_vars[var_name] = regridded[var_name]
         ds.close()
 
-    # Align times
+    # Align times across the time-varying inputs
     time_sets = [set(da.time.values) for da in regridded_vars.values()]
     common_times = sorted(time_sets[0].intersection(*time_sets[1:]))
     if not common_times:
@@ -241,6 +253,12 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
 
     for var_name in regridded_vars:
         regridded_vars[var_name] = regridded_vars[var_name].sel(time=common_times)
+
+    # Broadcast static inputs onto the common time axis as constant channels
+    # (kept lazy; materialized per time-chunk during streamed inference).
+    for var_name, da in static_vars.items():
+        regridded_vars[var_name] = da.expand_dims(
+            time=common_times).transpose('time', 'y', 'x')
 
     full_ds = xr.Dataset(regridded_vars)[input_vars]   # kept lazy; loaded per time-chunk
 

@@ -20,8 +20,8 @@ set -euo pipefail
 # Run outputs are written to $COSMOS_RESULTS_ROOT/<case_name>/results/<job_id>
 # To relocate, edit these two lines, or pass --data-root/--results-root
 # to scripts/run_training_pipeline.py.
-export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
-export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
 
 CASE_STUDY=case_studies/sf_bay_rtma
 RUN_NAME=$SLURM_JOB_ID
