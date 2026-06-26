@@ -17,13 +17,13 @@
 # The regridder is grid-agnostic — any rectilinear grid works.
 
 sources:
-  era5_u:
+  lr_u:
     file: 'YOUR_LOW_RES_U_WIND.nc'
     source_var: null          # null = auto-detect first variable in file
-  era5_v:
+  lr_v:
     file: 'YOUR_LOW_RES_V_WIND.nc'
     source_var: null
-  era5_temp:
+  lr_temp:
     file: 'YOUR_LOW_RES_TEMPERATURE.nc'
     source_var: null
   # Add more sources as needed...
@@ -41,8 +41,8 @@ compression_level: 1
 
 # ── Physical value bounds ───────────────────────────────────────────────────
 # Values outside [min, max] are replaced with NaN before interpolation.
-# Keys must match the output variable names above (era5_u, etc.).
+# Keys must match the output variable names above (lr_u, etc.).
 physical_bounds:
-  era5_u:    {min: -100, max: 100}
-  era5_v:    {min: -100, max: 100}
-  era5_temp: {min: 200,  max: 350}
+  lr_u:    {min: -100, max: 100}
+  lr_v:    {min: -100, max: 100}
+  lr_temp: {min: 200,  max: 350}

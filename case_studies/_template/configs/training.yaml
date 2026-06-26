@@ -3,19 +3,23 @@
 # Adjust hyperparameters for your specific domain.
 # See docs/adding_case_study.md for guidance on tuning.
 
+# Provenance labels for output metadata + plots (model-agnostic keys below)
+hr_source: 'YOUR_HIGH_RES_SOURCE'
+lr_source: 'YOUR_LOW_RES_SOURCE'
+
 # Variable Pairs
 # Each pair maps a low-res input to a high-res target.
 # The model learns: low_res -> high_res
 variable_pairs:
   wind_u:
-    high_res: 'conus404_u'      # Name of the high-res variable in preprocessed data
-    low_res: 'era5_u'           # Name of the low-res variable in preprocessed data
+    high_res: 'hr_u'      # Name of the high-res variable in preprocessed data
+    low_res: 'lr_u'       # Name of the low-res variable in preprocessed data
   wind_v:
-    high_res: 'conus404_v'
-    low_res: 'era5_v'
+    high_res: 'hr_v'
+    low_res: 'lr_v'
   temperature:
-    high_res: 'conus404_temp'
-    low_res: 'era5_temp'
+    high_res: 'hr_temp'
+    low_res: 'lr_temp'
   # Add more pairs as needed...
 
 # Additional input-only variables

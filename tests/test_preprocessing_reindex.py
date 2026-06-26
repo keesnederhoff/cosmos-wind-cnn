@@ -36,8 +36,8 @@ def test_preprocessor_reads_prefix_and_grid_config():
     assert pre.regular_time_grid is True
 
 
-def test_preprocessor_defaults_backward_compatible():
+def test_preprocessor_defaults_hr_lr():
     pre = NetCDFPreprocessor({'data_dir': '.'})
-    assert pre.target_prefix == 'conus404_'
-    assert pre.input_prefix == 'era5_'
+    assert pre.target_prefix == 'hr_'
+    assert pre.input_prefix == 'lr_'
     assert pre.regular_time_grid is False

@@ -1,10 +1,10 @@
 # cosmos-wind-cnn
 
-3D U-Net for statistical downscaling of meteorological variables from ERA5 (~31 km) to CONUS404 (1-4 km) resolution.
+3D U-Net for statistical downscaling of meteorological variables from coarse low-resolution (LR) reanalysis to high-resolution (HR) target fields.
 
 ## Overview
 
-This project trains a 3D U-Net neural network to learn the mapping between coarse-resolution (ERA5) and fine-resolution (CONUS404) meteorological fields. Once trained, the model can generate high-resolution predictions from low-resolution inputs — including for time periods and data sources (e.g., CMIP6) not seen during training.
+This project trains a 3D U-Net neural network to learn the mapping between low-resolution (LR) and high-resolution (HR) meteorological fields — for example, ERA5 (~31 km) to CONUS404 (4 km) for the SF Bay case study. Once trained, the model can generate HR predictions from LR inputs, including for time periods and data sources (e.g., CMIP6) not seen during training.
 
 **Supported variables:**
 - Wind components (U, V) with physics-informed loss (speed + direction)
@@ -137,10 +137,10 @@ Each run is fully self-contained and reproducible. Configs are archived into `ch
 
 ## Data Preparation
 
-This CNN expects ERA5 and CONUS404 data **already interpolated to the same grid** (e.g., UTM Zone 10N). The upstream data preparation pipeline involves:
+This CNN expects LR and HR data **already interpolated to the same grid** (e.g., UTM Zone 10N). For the SF Bay study (ERA5 → CONUS404), the upstream data preparation pipeline involves:
 
-1. **CONUS404**: Convert from native Lambert Conformal grid to UTM
-2. **ERA5**: Extract for model domain and interpolate to the same UTM grid
+1. **CONUS404** (HR target): Convert from native Lambert Conformal grid to UTM
+2. **ERA5** (LR input): Extract for model domain and interpolate to the same UTM grid
 
 See [docs/data_preparation.md](docs/data_preparation.md) for details and example scripts.
 
@@ -161,8 +161,8 @@ To add a new case study, see [docs/adding_case_study.md](docs/adding_case_study.
 
 The 3D U-Net takes a sequence of low-resolution timesteps and predicts a single high-resolution output:
 
-- **Input**: `(batch, seq_len, n_input_vars, H, W)` -- e.g., 6 timesteps of ERA5 fields
-- **Output**: `(batch, n_output_vars, H, W)` -- single timestep of CONUS404-resolution fields
+- **Input**: `(batch, seq_len, n_input_vars, H, W)` -- e.g., 6 timesteps of low-resolution (LR) fields
+- **Output**: `(batch, n_output_vars, H, W)` -- single timestep of high-resolution (HR) fields
 
 The encoder uses 3D convolutions that pool only spatially (not temporally), preserving temporal context through the network. Skip connections link encoder and decoder at each resolution level.
 

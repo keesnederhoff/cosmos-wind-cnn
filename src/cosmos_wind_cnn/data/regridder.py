@@ -11,14 +11,14 @@ Typical workflow
 
 **During training preprocessing** (run once, saves reference grid)::
 
-    regridder = Regridder.from_target_dataset(conus404_ds)
+    regridder = Regridder.from_target_dataset(hr_ds)
     regridder.save_reference_grid(output_path)
-    regridded_era5 = regridder.regrid(era5_ds, var_map, physical_bounds)
+    regridded_lr = regridder.regrid(lr_ds, var_map, physical_bounds)
 
 **During inference** (loads saved reference grid, no target data needed)::
 
     regridder = Regridder.from_reference_grid(reference_grid_path)
-    regridded = regridder.regrid(era5_ds, var_map, physical_bounds)
+    regridded = regridder.regrid(lr_ds, var_map, physical_bounds)
 """
 
 import numpy as np
@@ -179,7 +179,7 @@ class Regridder:
             controls the variable names in the returned dataset.
             Example::
 
-                {'era5_u': 'u10', 'era5_v': 'v10'}
+                {'lr_u': 'u10', 'lr_v': 'v10'}
 
             *output_name* is the key in the returned dataset (matching
             what the CNN expects).  *source_var_name* is the variable
