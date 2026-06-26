@@ -44,7 +44,7 @@ import xarray as xr
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs, get_data_dir
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ def main():
     run_name = args.run_name
     run_dirs = get_run_dirs(case_dir, run_name)
     processed_dir = run_dirs['data_processed']
-    data_dir = case_dir / 'data' / 'raw'
+    data_dir = get_data_dir(case_dir)
     checkpoint_dir = run_dirs['checkpoint']
 
     # ── Load configs ─────────────────────────────────────────────────────

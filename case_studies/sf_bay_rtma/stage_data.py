@@ -10,9 +10,12 @@ case_studies/sf_bay_rtma directory to Tallgrass.
 import shutil
 from pathlib import Path
 
+from cosmos_wind_cnn.utils.config import get_data_dir
+
 RTMA_SRC = Path("m:/emeryville_crescent/03_model_setup/meteo")
-ERA5_SRC = Path(__file__).resolve().parents[1] / "sf_bay_conus404" / "data" / "raw"
-DEST = Path(__file__).resolve().parent / "data" / "raw"
+CASE_DIR = Path(__file__).resolve().parent
+ERA5_SRC = get_data_dir(CASE_DIR.parent / "sf_bay_conus404")
+DEST = get_data_dir(CASE_DIR)
 DEST.mkdir(parents=True, exist_ok=True)
 
 RTMA_FILES = [

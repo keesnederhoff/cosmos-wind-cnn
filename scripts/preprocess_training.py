@@ -14,7 +14,7 @@ from pathlib import Path
 
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
 from cosmos_wind_cnn.data.regridder import Regridder
-from cosmos_wind_cnn.utils.config import load_config, get_run_dirs
+from cosmos_wind_cnn.utils.config import load_config, get_run_dirs, get_data_dir
 from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
 
 
@@ -36,7 +36,7 @@ def main():
     run_dirs = get_run_dirs(case_dir, args.run_name)
     config = load_config(case_dir / 'configs' / 'preprocessing.yaml')
 
-    data_dir = case_dir / 'data' / 'raw'
+    data_dir = get_data_dir(case_dir)
     output_dir = run_dirs['data_processed']
 
     print("=" * 70)
