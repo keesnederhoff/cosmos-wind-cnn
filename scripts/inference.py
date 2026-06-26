@@ -2,8 +2,8 @@
 Run inference with a trained model.
 
 Usage:
-    python scripts/inference.py --case-study case_studies/sf_bay
-    python scripts/inference.py --case-study case_studies/sf_bay --input path/to/data.nc
+    python scripts/inference.py --case-study case_studies/sf_bay_conus404
+    python scripts/inference.py --case-study case_studies/sf_bay_conus404 --input path/to/data.nc
 """
 
 import argparse
@@ -121,7 +121,7 @@ def main():
     print(f"Working directory: {project_root}\n")
     
     parser = argparse.ArgumentParser(description='Run inference')
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
                         help='Path to case study directory')
     parser.add_argument('--input', default=None,
                         help='Input NetCDF file (default: case_study/data/processed/val.nc)')

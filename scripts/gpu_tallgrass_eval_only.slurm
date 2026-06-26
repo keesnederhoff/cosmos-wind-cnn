@@ -36,12 +36,12 @@ python -c "import cosmos_wind_cnn; print('import ok:', cosmos_wind_cnn.__file__)
 echo "========================================"
 echo "Evaluation"
 echo "  run name   : ${RUN_NAME}"
-echo "  checkpoint : case_studies/sf_bay/checkpoints/${RUN_NAME}/best_model.pth"
-echo "  output     : case_studies/sf_bay/outputs/${RUN_NAME}/evaluation/"
+echo "  checkpoint : case_studies/sf_bay_conus404/results/${RUN_NAME}/checkpoint/best_model.pth"
+echo "  output     : case_studies/sf_bay_conus404/results/${RUN_NAME}/output_evaluation/"
 echo "========================================"
 
 srun python scripts/evaluate.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name $RUN_NAME
 
 echo "========================================"

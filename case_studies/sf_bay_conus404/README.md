@@ -30,7 +30,7 @@ Statistical downscaling of meteorological variables for the San Francisco Bay re
 ```bash
 # Single script: preprocess → train → archive configs → inference → evaluate
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment \
     --gpus 4
 ```
@@ -39,7 +39,7 @@ python scripts/run_training_pipeline.py \
 
 ```bash
 python scripts/run_inference.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment \
     --start-date 2024-01-01 \
     --end-date 2026-12-31
@@ -50,10 +50,10 @@ python scripts/run_inference.py \
 Lightweight standalone alternatives to the run-isolated pipeline above:
 
 ```bash
-python scripts/preprocess.py --case-study case_studies/sf_bay
-python scripts/train.py      --case-study case_studies/sf_bay
-python scripts/evaluate.py   --case-study case_studies/sf_bay
-python scripts/inference.py  --case-study case_studies/sf_bay
+python scripts/preprocess.py --case-study case_studies/sf_bay_conus404
+python scripts/train.py      --case-study case_studies/sf_bay_conus404
+python scripts/evaluate.py   --case-study case_studies/sf_bay_conus404
+python scripts/inference.py  --case-study case_studies/sf_bay_conus404
 ```
 
 For reproducible runs prefer `run_training_pipeline.py`, which isolates every
@@ -71,7 +71,7 @@ sbatch scripts/cpu_tallgrass.slurm   # CPU only
 All outputs are organized under `results/<run_name>/`:
 
 ```
-case_studies/sf_bay/
+case_studies/sf_bay_conus404/
 ├── data/raw/                              # Shared raw data
 ├── configs/                               # Shared YAML configs
 └── results/<run_name>/

@@ -2,7 +2,7 @@
 Preprocessing script - loads raw NetCDF files and creates train/val/test splits.
 
 Usage:
-    python scripts/preprocess.py --case-study case_studies/sf_bay
+    python scripts/preprocess.py --case-study case_studies/sf_bay_conus404
 """
 
 import os
@@ -24,8 +24,8 @@ def main():
     print(f"Working directory: {project_root}\n")
     
     parser = argparse.ArgumentParser(description='Preprocess data for CNN training')
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
-                        help='Path to case study directory (e.g., case_studies/sf_bay)')
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
+                        help='Path to case study directory (e.g., case_studies/sf_bay_conus404)')
     args = parser.parse_args()
 
     case_dir = Path(args.case_study)

@@ -65,7 +65,7 @@ except ImportError:
 
 from cosmos_wind_cnn.utils.config import get_run_dirs
 
-CASE_STUDY_DIR  = Path(r"d:\Git\cosmos-wind-cnn\case_studies\sf_bay")
+CASE_STUDY_DIR  = Path(r"d:\Git\cosmos-wind-cnn\case_studies\sf_bay_conus404")
 NDBC_DIR        = Path(r"d:\data\NDBC\sf_bay_winds")
 WHALES_TALE_DIR = Path(r"m:\emeryville_crescent\01_data\whales_tale")
 

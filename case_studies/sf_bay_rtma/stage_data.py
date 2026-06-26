@@ -1,4 +1,4 @@
-"""Stage full RTMA target files (from M:) + ERA5 input files (from sf_bay) into data/raw.
+"""Stage full RTMA target files (from M:) + ERA5 input files (from sf_bay_conus404) into data/raw.
 
 One-off helper. Run from anywhere:
     conda run -n cosmos_wind_cnn python case_studies/sf_bay_rtma/stage_data.py
@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 
 RTMA_SRC = Path("m:/emeryville_crescent/03_model_setup/meteo")
-ERA5_SRC = Path(__file__).resolve().parents[1] / "sf_bay" / "data" / "raw"
+ERA5_SRC = Path(__file__).resolve().parents[1] / "sf_bay_conus404" / "data" / "raw"
 DEST = Path(__file__).resolve().parent / "data" / "raw"
 DEST.mkdir(parents=True, exist_ok=True)
 

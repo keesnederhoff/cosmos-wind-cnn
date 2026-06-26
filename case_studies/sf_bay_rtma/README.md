@@ -2,7 +2,7 @@
 
 Statistical downscaling of meteorological variables for the San Francisco Bay
 region, using RTMA as the high-resolution training target (sister study to the
-CONUS404-based `sf_bay`).
+CONUS404-based `sf_bay_conus404`).
 
 ## Data
 

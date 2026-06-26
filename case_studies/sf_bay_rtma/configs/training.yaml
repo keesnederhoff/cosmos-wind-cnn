@@ -25,7 +25,7 @@ variable_pairs:
     high_res: 'hr_rain'
     low_res: 'lr_rain'
 
-# Model Architecture (same as sf_bay)
+# Model Architecture (same as sf_bay_conus404)
 base_channels: 16
 sequence_length: 6
 forecast_horizon: 0

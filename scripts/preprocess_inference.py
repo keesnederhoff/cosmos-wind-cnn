@@ -7,14 +7,14 @@ preprocessing.  The output is a single NetCDF file with all input
 variables on the target grid, ready to be fed to the inference script.
 
 Usage:
-    python scripts/preprocess_inference.py --case-study case_studies/sf_bay
+    python scripts/preprocess_inference.py --case-study case_studies/sf_bay_conus404
 
     # Custom time period or output path:
     python scripts/preprocess_inference.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --start-date 2000-01-01 \\
         --end-date   2005-12-31 \\
-        --output     case_studies/sf_bay/data/processed/inference_2000_2005.nc
+        --output     case_studies/sf_bay_conus404/data/processed/inference_2000_2005.nc
 
 Output:
     case_studies/<name>/results/<run_name>/output_inference/inference_regridded.nc
@@ -44,7 +44,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Regrid coarse data onto the target grid for inference'
     )
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
                         help='Path to case study directory')
     parser.add_argument('--start-date', default=None,
                         help='Override start date (ISO format, e.g. 2000-01-01)')

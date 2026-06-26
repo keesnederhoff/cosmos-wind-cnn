@@ -10,14 +10,14 @@ Steps:
 
 Usage:
     # Single GPU
-    python scripts/run_training_pipeline.py --case-study case_studies/sf_bay
+    python scripts/run_training_pipeline.py --case-study case_studies/sf_bay_conus404
 
     # Multi-GPU (DDP) — training step uses torchrun internally
-    python scripts/run_training_pipeline.py --case-study case_studies/sf_bay --gpus 4
+    python scripts/run_training_pipeline.py --case-study case_studies/sf_bay_conus404 --gpus 4
 
     # Custom run name and inference period
     python scripts/run_training_pipeline.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --run-name my_experiment \\
         --inference-start 1940-01-01 \\
         --inference-end   2026-12-31
@@ -573,7 +573,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Full training pipeline: preprocess -> train -> inference -> evaluate'
     )
-    parser.add_argument('--case-study', default='case_studies/sf_bay')
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404')
     parser.add_argument('--data-root', default=None,
                         help='Base dir for raw input data; reads <data-root>/<case_name>/raw. '
                              'Overrides COSMOS_DATA_ROOT. Default: <case-study>/data/raw')

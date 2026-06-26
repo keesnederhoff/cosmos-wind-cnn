@@ -25,7 +25,7 @@ export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_
 
 # Override the case study at submit time without editing this file, e.g.:
 #   sbatch --export=ALL,CASE_STUDY=case_studies/sf_bay_rtma scripts/gpu_tallgrass.slurm
-CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay}"
+CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay_conus404}"
 RUN_NAME=$SLURM_JOB_ID
 # Logs live under $COSMOS_RESULTS_ROOT/<case_name>/<job_id>/logs (mirrors get_run_dirs)
 LOG_DIR="${COSMOS_RESULTS_ROOT}/$(basename "$CASE_STUDY")/${RUN_NAME}/logs"

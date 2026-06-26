@@ -7,11 +7,11 @@ NetCDF with downscaled predictions for the full record.
 
 Usage:
     python scripts/inference_full_record.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --run-name 3663482
 
 Output:
-    case_studies/sf_bay/results/<run_name>/output_inference/full_record.nc
+    case_studies/sf_bay_conus404/results/<run_name>/output_inference/full_record.nc
 """
 
 import argparse
@@ -86,7 +86,7 @@ def main():
     print(f"Working directory: {project_root}\n")
 
     parser = argparse.ArgumentParser(description='Full-record ERA5 inference')
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
                         help='Path to case study directory')
     parser.add_argument('--run-name', required=True,
                         help='Checkpoint run name (e.g. 3663482)')

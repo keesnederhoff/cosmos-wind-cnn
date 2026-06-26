@@ -42,18 +42,18 @@ A single script handles preprocessing, training, config archiving, inference, an
 ```bash
 # Single GPU
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment
 
 # Multi-GPU (4x DDP)
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment \
     --gpus 4
 
 # Skip steps on reruns
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment \
     --skip-preprocess --skip-train
 ```
@@ -64,7 +64,7 @@ Use a trained model to downscale new coarse data:
 
 ```bash
 python scripts/run_inference.py \
-    --case-study case_studies/sf_bay \
+    --case-study case_studies/sf_bay_conus404 \
     --run-name my_experiment \
     --start-date 2024-01-01 \
     --end-date 2026-12-31
@@ -83,7 +83,7 @@ sbatch scripts/cpu_tallgrass.slurm
 ### Monitor training
 
 ```bash
-tensorboard --logdir case_studies/sf_bay/results/<run_name>/logs
+tensorboard --logdir case_studies/sf_bay_conus404/results/<run_name>/logs
 ```
 
 ## Project Structure
@@ -107,7 +107,7 @@ cosmos-wind-cnn/
 │   ├── cpu_tallgrass.slurm      # SLURM: CPU pipeline
 │   └── gpu_tallgrass.slurm      # SLURM: GPU pipeline (4x V100 DDP)
 ├── case_studies/                # Per-domain configs and data
-│   ├── sf_bay/                  # San Francisco Bay (working example)
+│   ├── sf_bay_conus404/         # San Francisco Bay, CONUS404 HR (working example)
 │   ├── puget_sound/             # Puget Sound (in progress)
 │   └── _template/               # Template for new case studies
 ├── notebooks/                   # Data exploration and validation
@@ -121,7 +121,7 @@ cosmos-wind-cnn/
 All outputs for a run are organized under `results/<run_name>/`:
 
 ```
-case_studies/sf_bay/
+case_studies/sf_bay_conus404/
 ├── data/raw/                              # Raw NetCDF input files (shared)
 ├── configs/                               # YAML configs (shared)
 └── results/<run_name>/                    # Everything for one run
@@ -152,7 +152,7 @@ Each case study is self-contained under `case_studies/`:
 
 | Case Study | Domain | Resolution | Status |
 |------------|--------|------------|--------|
-| `sf_bay` | San Francisco Bay | 4 km | Complete |
+| `sf_bay_conus404` | San Francisco Bay (CONUS404 HR) | 4 km | Complete |
 | `puget_sound` | Puget Sound | TBD | Data prep |
 
 To add a new case study, see [docs/adding_case_study.md](docs/adding_case_study.md).

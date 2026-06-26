@@ -23,7 +23,7 @@ def get_run_dirs(case_dir, run_name: str) -> dict:
     Parameters
     ----------
     case_dir : str or Path
-        Root of the case study (e.g. ``case_studies/sf_bay``).
+        Root of the case study (e.g. ``case_studies/sf_bay_conus404``).
     run_name : str
         Unique identifier for the run (SLURM job ID, experiment tag, …).
 

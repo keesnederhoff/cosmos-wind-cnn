@@ -11,21 +11,21 @@ inference_preprocessing.yaml at different source files.
 Usage:
     # Downscale a single year of ERA5
     python scripts/run_inference.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --run-name 3663482 \\
         --start-date 2024-01-01 \\
         --end-date   2026-12-31
 
     # Full ERA5 record (dates from archived config)
     python scripts/run_inference.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --run-name 3663482
 
     # Use a different inference config (e.g. for CMIP6)
     python scripts/run_inference.py \\
-        --case-study case_studies/sf_bay \\
+        --case-study case_studies/sf_bay_conus404 \\
         --run-name 3663482 \\
-        --inference-config case_studies/sf_bay/configs/inference_cmip6.yaml
+        --inference-config case_studies/sf_bay_conus404/configs/inference_cmip6.yaml
 
 Output:
     case_studies/<name>/results/<run_name>/output_inference/inference_ERA5_20240101_20261231.nc
@@ -95,7 +95,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Regrid coarse data and run trained CNN inference'
     )
-    parser.add_argument('--case-study', default='case_studies/sf_bay')
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404')
     parser.add_argument('--run-name', required=True,
                         help='Run name (must have archived configs in checkpoints/<run_name>/)')
     parser.add_argument('--start-date', default=None,

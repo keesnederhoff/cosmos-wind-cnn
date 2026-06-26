@@ -4,7 +4,7 @@
 # for inference with a trained model.
 #
 # Usage:
-#   python scripts/preprocess_inference.py --case-study case_studies/sf_bay
+#   python scripts/preprocess_inference.py --case-study case_studies/sf_bay_conus404
 
 # ── Source files to regrid ───────────────────────────────────────────────────
 # Each entry maps an output variable name (matching the CNN's input_vars)

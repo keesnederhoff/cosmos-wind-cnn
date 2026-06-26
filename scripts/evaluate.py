@@ -2,7 +2,7 @@
 Evaluate trained model on test set.
 
 Usage:
-    python scripts/evaluate.py --case-study case_studies/sf_bay
+    python scripts/evaluate.py --case-study case_studies/sf_bay_conus404
 """
 
 #import os
@@ -125,7 +125,7 @@ def main():
     print(f"Working directory: {project_root}\n")
     
     parser = argparse.ArgumentParser(description='Evaluate trained model')
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
                         help='Path to case study directory')
     parser.add_argument('--run-name', default='default',
                         help='Run name matching the one used during training')

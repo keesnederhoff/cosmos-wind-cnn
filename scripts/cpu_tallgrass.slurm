@@ -16,7 +16,7 @@ set -euo pipefail
 
 # Override the case study at submit time without editing this file, e.g.:
 #   sbatch --export=ALL,CASE_STUDY=case_studies/sf_bay_rtma scripts/cpu_tallgrass.slurm
-CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay}"
+CASE_STUDY="${CASE_STUDY:-case_studies/sf_bay_conus404}"
 RUN_NAME=$SLURM_JOB_ID
 LOG_DIR="${CASE_STUDY}/results/${RUN_NAME}/logs"
 

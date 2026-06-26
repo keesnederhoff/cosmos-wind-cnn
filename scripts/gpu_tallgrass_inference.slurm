@@ -37,12 +37,12 @@ echo "========================================="
 echo "Full-record ERA5 inference"
 echo "  run name   : $RUN_NAME"
 echo "  period     : $START_DATE → $END_DATE"
-echo "  checkpoint : case_studies/sf_bay/checkpoints/${RUN_NAME}/best_model.pth"
-echo "  output     : case_studies/sf_bay/outputs/${RUN_NAME}/inference/full_record.nc"
+echo "  checkpoint : case_studies/sf_bay_conus404/results/${RUN_NAME}/checkpoint/best_model.pth"
+echo "  output     : case_studies/sf_bay_conus404/results/${RUN_NAME}/output_inference/full_record.nc"
 echo "========================================="
 
 python scripts/inference_full_record.py \
-    --case-study  case_studies/sf_bay   \
+    --case-study  case_studies/sf_bay_conus404   \
     --run-name    "$RUN_NAME"            \
     --start-date  "$START_DATE"          \
     --end-date    "$END_DATE"            \

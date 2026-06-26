@@ -3,10 +3,10 @@ Training script for Wind 3D U-Net model.
 
 Usage:
     # Single GPU
-    python scripts/train.py --case-study case_studies/sf_bay
+    python scripts/train.py --case-study case_studies/sf_bay_conus404
 
     # Multi-GPU (single node, 4 GPUs)
-    torchrun --nproc_per_node=4 scripts/train.py --case-study case_studies/sf_bay
+    torchrun --nproc_per_node=4 scripts/train.py --case-study case_studies/sf_bay_conus404
 
     # Multi-node via SLURM (see gpu_tallgrass.slurm)
     sbatch scripts/gpu_tallgrass.slurm
@@ -86,8 +86,8 @@ def main():
         print(f"Working directory: {project_root}\n")
 
     parser = argparse.ArgumentParser(description='Train wind downscaling model')
-    parser.add_argument('--case-study', default='case_studies/sf_bay',
-                        help='Path to case study directory (e.g., case_studies/sf_bay)')
+    parser.add_argument('--case-study', default='case_studies/sf_bay_conus404',
+                        help='Path to case study directory (e.g., case_studies/sf_bay_conus404)')
     parser.add_argument('--run-name', default='default',
                         help='Sub-directory name for logs/checkpoints — use to avoid conflicts between runs')
     args = parser.parse_args()
