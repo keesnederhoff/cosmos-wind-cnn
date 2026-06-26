@@ -76,3 +76,38 @@ def test_run_streaming_inference_writes_expected_structure(tmp_path):
         assert np.isfinite(vals[2]).all()
     finally:
         nc.close()
+
+
+def test_run_streaming_inference_multichunk_denorm(tmp_path):
+    # n_time=6, seq=3 -> windows start 0,1,2,3 (predictions at t=2,3,4,5).
+    # time_chunk=2 forces TWO chunks across the window-start range, exercising the
+    # chunk boundary; non-unit stats exercise the denormalization scaling.
+    ds = _make_ds(n_time=6)
+    input_vars = ['lr_u', 'lr_v']
+    output_vars = ['hr_u', 'hr_v']
+    stats = {
+        'lr_u': {'mean': 10.0, 'std': 2.0}, 'lr_v': {'mean': 20.0, 'std': 4.0},
+        'hr_u': {'mean': 5.0, 'std': 3.0},  'hr_v': {'mean': 7.0, 'std': 6.0},
+    }
+    out = tmp_path / 'mc.nc'
+    model = _LastFrameModel(n_out=2).eval()
+
+    run_streaming_inference(
+        model, ds, input_vars, output_vars, stats, sequence_length=3,
+        output_path=out, device=torch.device('cpu'),
+        batch_size=2, num_workers=0, time_chunk=2, attrs={},
+    )
+
+    eps = 1e-8
+    nc = netCDF4.Dataset(str(out))
+    nc.set_auto_mask(False)
+    try:
+        # _LastFrameModel returns the normalized last input frame of channel c;
+        # so output hr_<v>[t] == denorm_hr( (lr_<v>[t] - mean_lr) / (std_lr + eps) ).
+        for t in (2, 3, 4, 5):  # every predicted timestep, spanning both chunks
+            for in_v, out_v in (('lr_u', 'hr_u'), ('lr_v', 'hr_v')):
+                norm = (ds[in_v].values[t] - stats[in_v]['mean']) / (stats[in_v]['std'] + eps)
+                expected = norm * (stats[out_v]['std'] + eps) + stats[out_v]['mean']
+                assert np.allclose(nc.variables[out_v][t], expected, rtol=1e-4), (out_v, t)
+    finally:
+        nc.close()
