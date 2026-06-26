@@ -41,47 +41,10 @@ from pathlib import Path
 import numpy as np
 import torch
 import xarray as xr
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
-
 from cosmos_wind_cnn.data.regridder import Regridder
+from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs, var_units_for
-
-
-# ── Sliding-window dataset ───────────────────────────────────────────────
-
-class _SlidingWindowDataset(Dataset):
-    def __init__(self, data, input_vars, stats, sequence_length):
-        self.input_vars = input_vars
-        self.sequence_length = sequence_length
-        n_times = data.sizes['time']
-
-        self.arrays = {}
-        nan_at_time = np.zeros(n_times, dtype=bool)
-        for var in input_vars:
-            arr = data[var].values.astype(np.float32)
-            nan_at_time |= np.isnan(arr).any(axis=(1, 2))
-            mean, std = stats[var]['mean'], stats[var]['std']
-            self.arrays[var] = (arr - mean) / (std + 1e-8)
-
-        self.n_times = n_times
-        self.valid_indices = [
-            i for i in range(n_times - sequence_length + 1)
-            if not nan_at_time[i:i + sequence_length].any()
-        ]
-        n_dropped = (n_times - sequence_length + 1) - len(self.valid_indices)
-        print(f"  {len(self.valid_indices):,} valid windows "
-              f"({n_dropped:,} dropped -- NaN)")
-
-    def __len__(self):
-        return len(self.valid_indices)
-
-    def __getitem__(self, idx):
-        start = self.valid_indices[idx]
-        slices = [self.arrays[v][start:start + self.sequence_length]
-                  for v in self.input_vars]
-        return torch.from_numpy(np.stack(slices, axis=1)), start
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -243,13 +206,6 @@ def main():
     print("  Loading into memory...")
     full_ds.load()
 
-    n_total = len(full_ds.time)
-    time_coords = full_ds.time.values
-    y_coords = full_ds.y.values if 'y' in full_ds.coords else None
-    x_coords = full_ds.x.values if 'x' in full_ds.coords else None
-    height = full_ds.sizes.get('y', full_ds.sizes.get('latitude'))
-    width = full_ds.sizes.get('x', full_ds.sizes.get('longitude'))
-
     # ── Load model ───────────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("Loading model...")
@@ -273,43 +229,9 @@ def main():
     with open(processed_dir / 'normalization_stats.pkl', 'rb') as f:
         stats = pickle.load(f)
 
-    # ── Inference ────────────────────────────────────────────────────────
+    # ── Inference + save ─────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("Running inference...")
-    print("=" * 70)
-
-    dataset = _SlidingWindowDataset(full_ds, input_vars, stats, sequence_length)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
-                        num_workers=args.num_workers,
-                        pin_memory=torch.cuda.is_available())
-
-    target_offset = sequence_length - 1
-    pred_arrays = {
-        var: np.full((n_total, height, width), np.nan, dtype=np.float32)
-        for var in output_vars
-    }
-
-    n_nan_outputs = 0
-    with torch.no_grad():
-        for batch_inputs, batch_starts in tqdm(loader, desc='Inference'):
-            outputs = model(batch_inputs.to(device))
-            batch_nan = (~torch.isfinite(outputs)).sum().item()
-            if batch_nan > 0:
-                n_nan_outputs += batch_nan
-                outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
-            outputs = outputs.cpu().numpy()
-            for b, start in enumerate(batch_starts.numpy()):
-                t = int(start) + target_offset
-                for c, var in enumerate(output_vars):
-                    mean, std = stats[var]['mean'], stats[var]['std']
-                    pred_arrays[var][t] = outputs[b, c] * (std + 1e-8) + mean
-
-    if n_nan_outputs > 0:
-        print(f"  WARNING: {n_nan_outputs:,} non-finite outputs replaced with 0.")
-
-    # ── Save ─────────────────────────────────────────────────────────────
-    print("\n" + "=" * 70)
-    print("Saving predictions...")
     print("=" * 70)
 
     if args.output:
@@ -329,41 +251,22 @@ def main():
                   "Close any application that has it open.")
             return
 
-    VAR_UNITS = var_units_for(output_vars)
-
-    coords = {'time': time_coords}
-    if y_coords is not None:
-        coords['y'] = ('y', y_coords)
-    if x_coords is not None:
-        coords['x'] = ('x', x_coords)
-
-    ds_out = xr.Dataset(
-        {var: (['time', 'y', 'x'], pred_arrays[var]) for var in output_vars},
-        coords=coords,
-    )
-    for coord in ('time', 'x', 'y'):
-        if coord in full_ds.coords and coord in ds_out.coords:
-            ds_out[coord].attrs.update(full_ds[coord].attrs)
-    for var in output_vars:
-        if var in VAR_UNITS:
-            ds_out[var].attrs['units'] = VAR_UNITS[var]
-
-    ds_out.attrs['source_checkpoint'] = str(checkpoint_dir / 'best_model.pth')
-    ds_out.attrs['checkpoint_epoch'] = int(checkpoint['epoch'])
-    ds_out.attrs['run_name'] = run_name
-    ds_out.attrs['sequence_length'] = sequence_length
-    ds_out.attrs['inference_config'] = str(inf_config_path)
+    attrs = {
+        'source_checkpoint': str(checkpoint_dir / 'best_model.pth'),
+        'checkpoint_epoch': int(checkpoint['epoch']),
+        'run_name': run_name,
+        'sequence_length': sequence_length,
+        'inference_config': str(inf_config_path),
+    }
     if 'crs' in train_config:
-        ds_out.attrs['crs'] = train_config['crs']
+        attrs['crs'] = train_config['crs']
 
-    encoding = {var: {'zlib': True, 'complevel': 1} for var in output_vars}
-    encoding['time'] = {'dtype': 'float64', 'units': 'hours since 1900-01-01',
-                        'calendar': 'gregorian'}
-    ds_out.to_netcdf(output_path, encoding=encoding)
+    n_predicted, n_total = run_streaming_inference(
+        model, full_ds, input_vars, output_vars, stats, sequence_length,
+        output_path, device=device, batch_size=args.batch_size,
+        num_workers=args.num_workers, attrs=attrs,
+    )
 
-    n_predicted = int(np.isfinite(
-        next(iter(pred_arrays.values()))
-    ).any(axis=(1, 2)).sum())
     size_mb = output_path.stat().st_size / (1024 * 1024)
 
     print(f"\n" + "=" * 70)

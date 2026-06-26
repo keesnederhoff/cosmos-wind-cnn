@@ -50,10 +50,10 @@ python scripts/run_inference.py \
 Lightweight standalone alternatives to the run-isolated pipeline above:
 
 ```bash
-python scripts/preprocess.py --case-study case_studies/sf_bay_conus404
+python scripts/preprocess_training.py --case-study case_studies/sf_bay_conus404 --run-name <run>
 python scripts/train.py      --case-study case_studies/sf_bay_conus404
 python scripts/evaluate.py   --case-study case_studies/sf_bay_conus404
-python scripts/inference.py  --case-study case_studies/sf_bay_conus404
+python scripts/run_inference.py --case-study case_studies/sf_bay_conus404 --run-name <run> --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD>
 ```
 
 For reproducible runs prefer `run_training_pipeline.py`, which isolates every

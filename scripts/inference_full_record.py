@@ -22,61 +22,11 @@ from pathlib import Path
 import numpy as np
 import torch
 import xarray as xr
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
 
+from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs, var_units_for
+from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
-
-class ERA5InferenceDataset(Dataset):
-    """
-    Sliding-window dataset for inference — ERA5 inputs only.
-
-    Loads all input arrays into memory (same strategy as WindDatasetInMemory)
-    since normalizing on-the-fly is cheap and avoids repeated NetCDF seeks.
-    """
-
-    def __init__(self, data, input_vars, stats, sequence_length):
-        self.input_vars = input_vars
-        self.sequence_length = sequence_length
-
-        n_times = data.sizes['time']
-
-        # Normalize and cache all input arrays in memory
-        self.arrays = {}
-        nan_at_time = np.zeros(n_times, dtype=bool)
-        for var in input_vars:
-            arr = data[var].values.astype(np.float32)   # (time, y, x)
-            nan_at_time |= np.isnan(arr).any(axis=(1, 2))
-            mean = stats[var]['mean']
-            std  = stats[var]['std']
-            self.arrays[var] = (arr - mean) / (std + 1e-8)
-
-        self.n_times = n_times
-
-        # Valid start indices: drop any window that contains a NaN timestep.
-        # The prediction target is the LAST timestep of each window
-        # (forecast_horizon=0, so target = start + sequence_length - 1).
-        self.valid_indices = [
-            i for i in range(n_times - sequence_length + 1)
-            if not nan_at_time[i : i + sequence_length].any()
-        ]
-
-        n_dropped = (n_times - sequence_length + 1) - len(self.valid_indices)
-        print(f"  {len(self.valid_indices):,} valid windows "
-              f"({n_dropped:,} dropped — NaN in window)")
-
-    def __len__(self):
-        return len(self.valid_indices)
-
-    def __getitem__(self, idx):
-        start = self.valid_indices[idx]
-        slices = [self.arrays[v][start : start + self.sequence_length]
-                  for v in self.input_vars]
-        # Return (seq_len, n_vars, y, x) tensor and the start index so the
-        # caller knows which output timestep this prediction maps to.
-        return torch.from_numpy(np.stack(slices, axis=1)), start
 
 
 def main():
@@ -245,115 +195,23 @@ def main():
     print(f"\nRecord to process: {n_total:,} timesteps  "
           f"({full_ds.time.values[0]} — {full_ds.time.values[-1]})")
 
-    x_coords = full_ds.x.values if 'x' in full_ds.coords else None
-    y_coords = full_ds.y.values if 'y' in full_ds.coords else None
-    height = full_ds.sizes.get('y', full_ds.sizes.get('latitude'))
-    width  = full_ds.sizes.get('x', full_ds.sizes.get('longitude'))
-    time_coords = full_ds.time.values
-
-    # ── Build dataset & DataLoader ───────────────────────────────────────────
-    print("\nBuilding sliding-window dataset...")
-    dataset = ERA5InferenceDataset(full_ds, input_vars, stats, sequence_length)
-    loader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
-
-    # ── Allocate output arrays ───────────────────────────────────────────────
-    # Prediction for a window starting at `start` maps to timestep
-    # start + sequence_length - 1  (the last input step, forecast_horizon=0)
-    target_offset = sequence_length - 1
-    pred_arrays = {
-        var: np.full((n_total, height, width), np.nan, dtype=np.float32)
-        for var in output_vars
+    # ── Run streaming inference ──────────────────────────────────────────────
+    attrs = {
+        'source_checkpoint': str(checkpoint_path),
+        'checkpoint_epoch':  int(checkpoint['epoch']),
+        'run_name':          args.run_name,
+        'sequence_length':   sequence_length,
     }
-
-    # ── Run inference ────────────────────────────────────────────────────────
-    print("\nRunning inference...")
-    n_nan_outputs = 0
-    with torch.no_grad():
-        for batch_inputs, batch_starts in tqdm(loader, desc='Batches'):
-            outputs = model(batch_inputs.to(device))   # (B, C, H, W)
-
-            batch_nan = (~torch.isfinite(outputs)).sum().item()
-            if batch_nan > 0:
-                n_nan_outputs += batch_nan
-                outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
-
-            outputs = outputs.cpu().numpy()
-            for b, start in enumerate(batch_starts.numpy()):
-                t = int(start) + target_offset
-                for c, var in enumerate(output_vars):
-                    mean = stats[var]['mean']
-                    std  = stats[var]['std']
-                    pred_arrays[var][t] = outputs[b, c] * (std + 1e-8) + mean
-
-    if n_nan_outputs > 0:
-        print(f"WARNING: {n_nan_outputs:,} non-finite model outputs replaced with 0.")
-
-    # ── Save output NetCDF ───────────────────────────────────────────────────
-    print("\nSaving predictions...")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # On Windows, NetCDF4 holds an exclusive lock on open files.
-    # Explicitly close the source datasets (done above) and remove any
-    # existing output file before writing to avoid PermissionError.
-    if output_path.exists():
-        try:
-            output_path.unlink()
-        except PermissionError:
-            print(f"WARNING: could not delete existing {output_path}.")
-            print("Close any application (Panoply, Python session) that has the file open and retry.")
-            return
-
-    # Units for each output variable — matches the processed data convention
-    VAR_UNITS = var_units_for(output_vars)
-
-    coords = {'time': time_coords}
-    if y_coords is not None:
-        coords['y'] = ('y', y_coords)
-    if x_coords is not None:
-        coords['x'] = ('x', x_coords)
-
-    ds_out = xr.Dataset(
-        {var: (['time', 'y', 'x'], pred_arrays[var]) for var in output_vars},
-        coords=coords,
-    )
-
-    # ── Mirror coordinate attributes from the processed data ─────────────────
-    # full_ds still carries the x/y/time attrs from the source NetCDFs
-    for coord in ('time', 'x', 'y'):
-        if coord in full_ds.coords and coord in ds_out.coords:
-            ds_out[coord].attrs.update(full_ds[coord].attrs)
-
-    # ── Variable unit attributes ──────────────────────────────────────────────
-    for var in output_vars:
-        if var in VAR_UNITS:
-            ds_out[var].attrs['units'] = VAR_UNITS[var]
-
-    # ── Global attributes ─────────────────────────────────────────────────────
-    ds_out.attrs['source_checkpoint'] = str(checkpoint_path)
-    ds_out.attrs['checkpoint_epoch']  = int(checkpoint['epoch'])
-    ds_out.attrs['run_name']          = args.run_name
-    ds_out.attrs['sequence_length']   = sequence_length
     if 'crs' in config:
-        ds_out.attrs['crs'] = config['crs']
+        attrs['crs'] = config['crs']
 
-    # ── Encoding: match time convention of processed files ────────────────────
-    encoding = {var: {'zlib': True, 'complevel': 1} for var in output_vars}
-    encoding['time'] = {
-        'dtype':    'float64',
-        'units':    'hours since 1900-01-01',
-        'calendar': 'gregorian',
-    }
-    ds_out.to_netcdf(output_path, encoding=encoding)
-
-    n_predicted = int(np.isfinite(
-        next(iter(pred_arrays.values()))
-    ).any(axis=(1, 2)).sum())
+    print("\nRunning streaming inference...")
+    n_predicted, _ = run_streaming_inference(
+        model, full_ds, input_vars, output_vars, stats, sequence_length,
+        output_path, device=device,
+        batch_size=args.batch_size, num_workers=args.num_workers,
+        attrs=attrs,
+    )
     print(f"\nSaved → {output_path}")
     print(f"  Predicted timesteps : {n_predicted:,} / {n_total:,}")
     print(f"  Skipped (NaN window): {n_total - n_predicted:,}")
