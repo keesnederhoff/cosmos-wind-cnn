@@ -23,8 +23,8 @@ python scripts/train.py --case-study case_studies/puget_sound --run-name first_r
 python scripts/evaluate.py --case-study case_studies/puget_sound --run-name first_run
 
 # Or quick standalone scripts (local experiments)
-python scripts/preprocess.py --case-study case_studies/puget_sound
-python scripts/inference.py  --case-study case_studies/puget_sound
+python scripts/preprocess_training.py --case-study case_studies/puget_sound --run-name <run>
+python scripts/run_inference.py --case-study case_studies/puget_sound --run-name <run> --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD>
 ```
 
 All outputs are saved under `results/<run_name>/`.
