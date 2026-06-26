@@ -25,6 +25,13 @@ variable_pairs:
     high_res: 'hr_rain'
     low_res: 'lr_rain'
 
+# Extra input-only channels (fed to the model, not predicted). No HR target, so
+# they don't add outputs and don't shrink the training period (both span the
+# full record): ERA5 cloud cover + RTMA static surface height (terrain).
+additional_inputs:
+  - 'lr_cloud'
+  - 'static_terrain'
+
 # Model Architecture (same as sf_bay_conus404)
 base_channels: 16
 sequence_length: 6

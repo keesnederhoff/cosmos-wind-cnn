@@ -144,12 +144,22 @@ class NetCDFPreprocessor:
             data_vars[var_name] = da
 
         # --- Step 3: handle any remaining variables not prefixed with lr_/hr_ ---
+        # These are extra input-only fields (e.g. ERA5 cloud as 'lr_*' is handled
+        # in Step 2; a STATIC field like terrain/surface height has no time dim
+        # and is broadcast over the common time axis as a constant input channel).
         for var_name in other_keys:
             ds = raw_datasets[var_name]
             actual_var_name = var_names_map[var_name]
-            da = ds[actual_var_name].sel({time_coord_name: common_times})
+            da = ds[actual_var_name]
+            if time_coord_name in da.dims:
+                da = da.sel({time_coord_name: common_times})
             da = self._standardize_coords(da)
             da = self._mask_fill_values(da, var_name)
+            if time_coord_name not in da.dims:
+                # Static field: broadcast onto (time, y, x). zlib compresses the
+                # repeated constant time axis to ~nothing on write.
+                da = da.broadcast_like(target_reference_da).transpose(
+                    time_coord_name, 'y', 'x')
             data_vars[var_name] = da
 
         # Merge into a single dataset (all arrays now share time/y/x)
@@ -320,6 +330,7 @@ class NetCDFPreprocessor:
             'rain':       ['precipitation', 'rainfall', 'tp', 'rain', 'precip',
                            'precipitation_flux', 'total_precipitation'],
             'cloud':      ['cloud_area_fraction', 'cloud', 'cloud_area', 'tcc'],
+            'terrain':    ['surface_height', 'terrain', 'orography', 'orog', 'hgt', 'height'],
             'evap':       ['evaporation', 'e', 'evap'],
             'heat':       ['surface_sensible_heat_flux', 'sshf', 'sensible_heat', 'heat'],
         }
