@@ -39,13 +39,13 @@ Thumbs.db
 # TensorBoard logs
 **/logs/events.*
 
-# Output files (generated)
-**/outputs/**
-!**/outputs/.gitkeep
-
-# Per-run output trees (results/<run_id>/...) — large, regenerated, never tracked
-**/results/**
-!**/results/.gitkeep
+# Case-study data + run outputs live OUTSIDE the repo
+# (COSMOS_DATA_ROOT / COSMOS_RESULTS_ROOT). Ignore any locally-created scaffolding.
+case_studies/*/data/
+case_studies/*/results/
+case_studies/*/checkpoints/
+case_studies/*/logs/
+case_studies/*/outputs/
 
 # Large files
 *.h5
@@ -56,8 +56,6 @@ Thumbs.db
 # Backup files
 *.bak
 
-# Keep directory structure
-!**/.gitkeep
 
 # Claude Code
 .claude/
