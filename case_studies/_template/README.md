@@ -1,5 +1,22 @@
 # [Case Study Name]
 
+## Storage
+
+The repo holds **only** `configs/` + `README.md` for each case study. Data and results are external, controlled by two env vars that must be set before running anything:
+
+```bat
+:: Windows — point both at your storage drive
+set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
+```
+```bash
+# Linux/HPC: already exported by the Tallgrass SLURM scripts
+```
+
+With those set:
+- Raw inputs land at `%COSMOS_DATA_ROOT%\my_study\raw_data\` (Windows) / `$COSMOS_DATA_ROOT/my_study/raw_data/` (Linux)
+- Per-run outputs land at `%COSMOS_RESULTS_ROOT%\my_study\results\<run_name>\` (Windows) / `$COSMOS_RESULTS_ROOT/my_study/results/<run_name>/` (Linux)
+
 ## Setup
 
 1. Copy this template:
@@ -7,9 +24,10 @@
    cp -r case_studies/_template case_studies/my_study
    ```
 
-2. Prepare your data following `docs/data_preparation.md`
+2. Set the env vars above (Windows) or verify they're exported (HPC).
 
-3. Place NetCDF files in `data/raw/`
+3. Prepare your data following `docs/data_preparation.md` and place NetCDF files in
+   `$COSMOS_DATA_ROOT/my_study/raw_data/`
 
 4. Edit `configs/preprocessing.yaml` with your filenames and physical bounds
 
@@ -38,7 +56,7 @@
    python scripts/run_inference.py --case-study case_studies/my_study --run-name <run> --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD>
    ```
 
-All outputs are saved under `results/<run_name>/` (checkpoint, processed data, logs, inference, evaluation).
+All outputs are saved under `$COSMOS_RESULTS_ROOT/my_study/results/<run_name>/` (checkpoint, processed data, logs, inference, evaluation).
 
 ## Variable key convention (hr_ / lr_)
 

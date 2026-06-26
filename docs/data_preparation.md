@@ -107,7 +107,8 @@ Data variables:
 
 ### 5. File naming convention
 
-Place files in `case_studies/<name>/data/raw/` following the naming convention used in the preprocessing config:
+Place files in `$COSMOS_DATA_ROOT/<name>/raw_data/` following the naming convention used in the preprocessing config
+(locally on Windows: `%COSMOS_DATA_ROOT%\<name>\raw_data\`):
 
 ```
 <SOURCE>_<DOMAIN>_<RESOLUTION>_<VARIABLE>_<YEAR_RANGE>_<CRS>.nc
@@ -128,7 +129,7 @@ import xarray as xr
 
 files = ['file1.nc', 'file2.nc', ...]
 for f in files:
-    ds = xr.open_dataset(f'case_studies/my_study/data/raw/{f}')
+    ds = xr.open_dataset(Path(os.environ['COSMOS_DATA_ROOT']) / 'my_study' / 'raw_data' / f)
     print(f"{f}: dims={dict(ds.dims)}, time={len(ds.time)}")
     ds.close()
 ```

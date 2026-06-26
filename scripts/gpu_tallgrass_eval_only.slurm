@@ -14,6 +14,14 @@
 #SBATCH --output=gpu_eval_%j.log           # Standard output and error log
 
 set -euo pipefail
+
+# ── Storage location (OFF /home, on caldera PCMSC project space) ─────────────
+# Raw inputs:  $COSMOS_DATA_ROOT/<case>/raw_data ; run outputs:
+# $COSMOS_RESULTS_ROOT/<case>/results/<job> (read by utils/config.get_data_dir /
+# get_run_dirs). Edit these to relocate storage.
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+
 mkdir -p logs
 
 # -------------------------------------------------------

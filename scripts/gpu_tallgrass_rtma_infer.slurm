@@ -14,10 +14,10 @@
 
 set -euo pipefail
 
-export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/data
-export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/results
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
 RUN_NAME=3732177
-LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/${RUN_NAME}/logs"
+LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/results/${RUN_NAME}/logs"
 trap 'mkdir -p "$LOG_DIR" && cp "${SLURM_SUBMIT_DIR}/gpu_rtma_infer_${SLURM_JOB_ID}.log" "$LOG_DIR/" 2>/dev/null || true' EXIT
 
 export OMP_NUM_THREADS=18

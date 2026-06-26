@@ -15,14 +15,13 @@
 
 set -euo pipefail
 
-# Fresh full rtma pipeline. Raw read from /home (complete; caldera raw staging
-# is blocked by the pcmsc Lustre per-OST quota), results written to caldera.
-# (COSMOS_DATA_ROOT intentionally NOT set -> get_data_dir falls back to <case>/data/raw on /home)
-export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/results
+# Fresh full rtma pipeline. Raw data + results both written to caldera.
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
 
 CASE_STUDY=case_studies/sf_bay_rtma
 RUN_NAME=$SLURM_JOB_ID
-LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/${RUN_NAME}/logs"
+LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/results/${RUN_NAME}/logs"
 trap 'mkdir -p "$LOG_DIR" && cp "${SLURM_SUBMIT_DIR}/gpu_rtma_fresh_${SLURM_JOB_ID}.log" "$LOG_DIR/" 2>/dev/null || true' EXIT
 
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)

@@ -16,16 +16,16 @@
 set -euo pipefail
 
 # ── Storage location (OFF /home, on caldera PCMSC project space) ─────────────
-# Raw inputs are read from   $COSMOS_DATA_ROOT/<case_name>/raw
-# Run outputs are written to $COSMOS_RESULTS_ROOT/<case_name>/<job_id>
+# Raw inputs are read from   $COSMOS_DATA_ROOT/<case_name>/raw_data
+# Run outputs are written to $COSMOS_RESULTS_ROOT/<case_name>/results/<job_id>
 # To relocate, edit these two lines, or pass --data-root/--results-root
 # to scripts/run_training_pipeline.py.
-export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/data
-export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/results
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
 
 CASE_STUDY=case_studies/sf_bay_rtma
 RUN_NAME=$SLURM_JOB_ID
-LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/${RUN_NAME}/logs"
+LOG_DIR="${COSMOS_RESULTS_ROOT}/sf_bay_rtma/results/${RUN_NAME}/logs"
 
 trap 'mkdir -p "$LOG_DIR" && cp "${SLURM_SUBMIT_DIR}/gpu_pipeline_rtma_${SLURM_JOB_ID}.log" "$LOG_DIR/" 2>/dev/null || true' EXIT
 

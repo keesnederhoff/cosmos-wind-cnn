@@ -31,7 +31,7 @@ import xarray as xr
 from dask.diagnostics import ProgressBar
 
 from cosmos_wind_cnn.data.regridder import Regridder
-from cosmos_wind_cnn.utils.config import load_config, get_run_dirs
+from cosmos_wind_cnn.utils.config import load_config, get_run_dirs, get_data_dir
 
 
 def main():
@@ -58,7 +58,7 @@ def main():
 
     case_dir = Path(args.case_study)
     run_dirs = get_run_dirs(case_dir, args.run_name)
-    data_dir = case_dir / 'data' / 'raw'
+    data_dir = get_data_dir(case_dir)
     processed_dir = run_dirs['data_processed']
     config_path = case_dir / 'configs' / 'inference_preprocessing.yaml'
     ref_grid_path = processed_dir / 'target_grid_reference.nc'

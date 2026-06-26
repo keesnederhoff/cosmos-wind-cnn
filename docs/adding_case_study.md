@@ -1,5 +1,24 @@
 # Adding a New Case Study
 
+## Storage
+
+The repo holds **only** `configs/` + `README.md` for each case study. Raw data and run outputs are external, controlled by two env vars that must be set before running anything (the code raises a clear error if either is unset):
+
+```bat
+:: Windows — point both at your storage drive
+set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
+```
+```bash
+# Linux/HPC: already exported by the Tallgrass SLURM scripts (caldera base)
+```
+
+With those set:
+- Raw inputs go to `$COSMOS_DATA_ROOT/my_study/raw_data/` (locally `G:\03-downscaling_meteo_cnn\my_study\raw_data\`)
+- Per-run outputs land at `$COSMOS_RESULTS_ROOT/my_study/results/<run_name>/` (locally `G:\03-downscaling_meteo_cnn\my_study\results\<run_name>\`)
+
+`case_studies/_template/` is the canonical example — copy it and follow the steps below.
+
 ## 1. Create the directory structure
 
 Copy the template:
@@ -15,12 +34,10 @@ case_studies/my_study/
 │   ├── preprocessing.yaml
 │   ├── training.yaml
 │   └── inference_preprocessing.yaml
-├── data/
-│   └── raw/.gitkeep
 └── README.md
 ```
 
-When you run the pipeline, a `results/<run_name>/` directory is created automatically with subdirectories for checkpoint, processed data, logs, inference output, and evaluation output.
+When you run the pipeline, a `results/<run_name>/` directory is created automatically under `$COSMOS_RESULTS_ROOT/my_study/results/` with subdirectories for checkpoint, processed data, logs, inference output, and evaluation output.
 
 ## 2. Prepare the data
 
@@ -28,7 +45,7 @@ Follow the pipeline in [data_preparation.md](data_preparation.md):
 
 1. Convert your high-resolution (HR) target data to your target UTM grid
 2. Interpolate your low-resolution (LR) input data to the same grid
-3. Place all NetCDF files in `case_studies/my_study/data/raw/`
+3. Place all NetCDF files in `$COSMOS_DATA_ROOT/my_study/raw_data/`
 
 Requirements:
 - One NetCDF file per variable
@@ -134,7 +151,7 @@ python scripts/run_inference.py \
     --end-date 2026-12-31
 ```
 
-All outputs are saved under `case_studies/my_study/results/<run_name>/`.
+All outputs are saved under `$COSMOS_RESULTS_ROOT/my_study/results/<run_name>/`.
 
 ## 7. Update the case study README
 
@@ -146,5 +163,5 @@ Edit `case_studies/my_study/README.md` with domain-specific details:
 ## Tips
 
 - Start with the same hyperparameters as SF Bay and tune from there
-- Use TensorBoard to compare training curves: `tensorboard --logdir case_studies/my_study/results/<run_name>/logs`
+- Use TensorBoard to compare training curves: `tensorboard --logdir $COSMOS_RESULTS_ROOT/my_study/results/<run_name>/logs`
 - The validation notebooks can be parameterized to work with any case study

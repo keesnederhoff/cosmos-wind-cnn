@@ -9,7 +9,8 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=cpu_rtma_eval_%j.log
 set -uo pipefail
-export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn/results
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
 export OMP_NUM_THREADS=16 MKL_NUM_THREADS=16
 RUN_NAME=${1:-3732197}
 echo "eval-only for run $RUN_NAME"

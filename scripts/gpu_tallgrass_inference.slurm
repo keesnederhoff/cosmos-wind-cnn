@@ -14,6 +14,13 @@
 
 set -euo pipefail
 
+# ── Storage location (OFF /home, on caldera PCMSC project space) ─────────────
+# Raw inputs:  $COSMOS_DATA_ROOT/<case>/raw_data ; run outputs:
+# $COSMOS_RESULTS_ROOT/<case>/results/<job> (read by utils/config.get_data_dir /
+# get_run_dirs). Edit these to relocate storage.
+export COSMOS_DATA_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+export COSMOS_RESULTS_ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/cosmos-wind-cnn
+
 # ── Run name of the checkpoint to use ────────────────────────────────────────
 # Pass overrides at submission time:
 #   sbatch --export=RUN_NAME=3663482,START_DATE=1979-10-01,END_DATE=2021-12-31 gpu_tallgrass_inference.slurm

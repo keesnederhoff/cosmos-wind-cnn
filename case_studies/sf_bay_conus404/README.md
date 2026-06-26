@@ -57,7 +57,7 @@ python scripts/run_inference.py --case-study case_studies/sf_bay_conus404 --run-
 ```
 
 For reproducible runs prefer `run_training_pipeline.py`, which isolates every
-artifact under `results/<run_name>/`.
+artifact under `$COSMOS_RESULTS_ROOT/sf_bay_conus404/results/<run_name>/`.
 
 ### HPC (SLURM on Tallgrass)
 
@@ -66,18 +66,28 @@ sbatch scripts/gpu_tallgrass.slurm   # 4x V100 DDP
 sbatch scripts/cpu_tallgrass.slurm   # CPU only
 ```
 
-## Run Output Structure
+## Storage
 
-All outputs are organized under `results/<run_name>/`:
+The repo holds only `configs/` + `README.md`. Raw data and run outputs are external:
+
+```bat
+:: Windows — set before running anything
+set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
+```
 
 ```
-case_studies/sf_bay_conus404/
-├── data/raw/                              # Shared raw data
-├── configs/                               # Shared YAML configs
-└── results/<run_name>/
-    ├── checkpoint/                        # best_model.pth, archived configs
-    ├── data_processed/                    # train/val/test splits, normalization stats
-    ├── logs/                              # TensorBoard, SLURM log
-    ├── output_inference/                  # Downscaled predictions
-    └── output_evaluation/                 # Metrics, figures
+<COSMOS_DATA_ROOT>\sf_bay_conus404\raw_data\    # Raw NetCDF input files (shared across runs)
+
+case_studies/sf_bay_conus404/                   # Repo: configs + README only
+└── configs/
+
+<COSMOS_RESULTS_ROOT>\sf_bay_conus404\results\<run_name>\   # Per-run outputs
+    ├── checkpoint/                             # best_model.pth, archived configs
+    ├── data_processed/                         # train/val/test splits, normalization stats
+    ├── logs/                                   # TensorBoard, SLURM log
+    ├── output_inference/                       # Downscaled predictions
+    └── output_evaluation/                      # Metrics, figures
 ```
+
+On HPC the Tallgrass SLURM scripts already export `COSMOS_DATA_ROOT` and `COSMOS_RESULTS_ROOT` pointing at caldera project space.
