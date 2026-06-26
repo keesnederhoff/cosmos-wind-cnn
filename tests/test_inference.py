@@ -111,3 +111,32 @@ def test_run_streaming_inference_multichunk_denorm(tmp_path):
                 assert np.allclose(nc.variables[out_v][t], expected, rtol=1e-4), (out_v, t)
     finally:
         nc.close()
+
+
+def test_run_streaming_inference_writes_cf_grid(tmp_path):
+    ds = _make_ds(n_time=5)
+    input_vars = ['lr_u', 'lr_v']
+    output_vars = ['hr_u', 'hr_v']
+    stats = _unit_stats(input_vars + output_vars)
+    out = tmp_path / 'cf.nc'
+    run_streaming_inference(
+        _LastFrameModel(n_out=2).eval(), ds, input_vars, output_vars, stats,
+        sequence_length=3, output_path=out, device=torch.device('cpu'),
+        batch_size=4, num_workers=0, time_chunk=100,
+        attrs={'crs': 'EPSG:32610', 'run_name': 't'},
+    )
+    nc = netCDF4.Dataset(str(out))
+    try:
+        # CF coordinate attributes on x/y
+        assert nc.variables['x'].standard_name == 'projection_x_coordinate'
+        assert nc.variables['y'].standard_name == 'projection_y_coordinate'
+        assert nc.variables['x'].units == 'm' and nc.variables['x'].axis == 'X'
+        # a grid_mapping variable encoding the projection
+        assert 'crs' in nc.variables
+        assert nc.variables['crs'].grid_mapping_name == 'transverse_mercator'
+        assert int(nc.variables['crs'].epsg_code) == 32610
+        # data vars reference it; crs is NOT also a stray global string attr
+        assert nc.variables['hr_u'].grid_mapping == 'crs'
+        assert 'crs' not in nc.ncattrs()
+    finally:
+        nc.close()

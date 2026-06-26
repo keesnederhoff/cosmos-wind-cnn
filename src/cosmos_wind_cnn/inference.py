@@ -40,6 +40,41 @@ class SlidingWindowDataset(Dataset):
         return torch.from_numpy(np.stack(slices, axis=1)), start
 
 
+def _write_cf_grid(nc, crs_str, has_x=True, has_y=True):
+    """Add CF metadata so the output grid + projection are auto-recognized.
+
+    Sets CF attributes on the x/y coordinate variables and, when ``crs_str`` is
+    given (e.g. ``'EPSG:32610'``), writes a CF ``grid_mapping`` variable named
+    ``crs`` (projection parameters + WKT, via pyproj). Returns the grid-mapping
+    variable name to attach to each data variable, or ``None`` if no CRS given.
+    """
+    import pyproj
+    crs = pyproj.CRS.from_user_input(crs_str) if crs_str else None
+    projected = crs.is_projected if crs is not None else True
+    if has_x:
+        xv = nc.variables['x']
+        xv.axis = 'X'
+        xv.units, xv.standard_name, xv.long_name = (
+            ('m', 'projection_x_coordinate', 'x coordinate of projection')
+            if projected else ('degrees_east', 'longitude', 'longitude'))
+    if has_y:
+        yv = nc.variables['y']
+        yv.axis = 'Y'
+        yv.units, yv.standard_name, yv.long_name = (
+            ('m', 'projection_y_coordinate', 'y coordinate of projection')
+            if projected else ('degrees_north', 'latitude', 'latitude'))
+    if crs is None:
+        return None
+    gm = nc.createVariable('crs', 'i4')
+    for key, value in crs.to_cf().items():
+        gm.setncattr(key, value)
+    gm.spatial_ref = crs.to_wkt()   # GDAL / QGIS convention
+    epsg = crs.to_epsg()
+    if epsg:
+        gm.epsg_code = int(epsg)
+    return 'crs'
+
+
 def run_streaming_inference(model, full_ds, input_vars, output_vars, stats,
                             sequence_length, output_path, *, device,
                             batch_size=64, num_workers=8, time_chunk=10000,
@@ -81,6 +116,14 @@ def run_streaming_inference(model, full_ds, input_vars, output_vars, stats,
         nc.createVariable('y', 'f8', ('y',))[:] = y_coords
     if x_coords is not None:
         nc.createVariable('x', 'f8', ('x',))[:] = x_coords
+
+    # CF coordinate + grid-mapping metadata so GIS/CF tools (QGIS, GDAL,
+    # rioxarray, cartopy) auto-recognize the grid and projection. Driven by the
+    # optional 'crs' entry in attrs (e.g. 'EPSG:32610').
+    grid_mapping = _write_cf_grid(nc, attrs.pop('crs', None),
+                                  has_x=x_coords is not None,
+                                  has_y=y_coords is not None)
+
     t_chunk_nc = max(1, min(720, n_total))
     out_nc = {}
     for var in output_vars:
@@ -89,6 +132,9 @@ def run_streaming_inference(model, full_ds, input_vars, output_vars, stats,
                               fill_value=np.float32(np.nan))
         if var in VAR_UNITS:
             v.units = VAR_UNITS[var]
+        if grid_mapping:
+            v.grid_mapping = grid_mapping
+            v.coordinates = 'x y'
         out_nc[var] = v
     for key, value in attrs.items():
         setattr(nc, key, value)
