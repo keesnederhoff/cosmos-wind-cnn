@@ -31,7 +31,6 @@ import json
 import pickle
 import shutil
 import subprocess
-import netCDF4
 import sys
 import time
 from datetime import timedelta
@@ -41,10 +40,10 @@ import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
-from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
+from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
 from cosmos_wind_cnn.utils.config import (
@@ -176,40 +175,6 @@ def step_archive_configs(case_dir, run_dirs):
 #  STEP 4: Inference (regrid + run model)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class _SlidingWindowDataset(Dataset):
-    """In-memory sliding-window dataset for inference."""
-
-    def __init__(self, data, input_vars, stats, sequence_length):
-        self.input_vars = input_vars
-        self.sequence_length = sequence_length
-        n_times = data.sizes['time']
-
-        self.arrays = {}
-        nan_at_time = np.zeros(n_times, dtype=bool)
-        for var in input_vars:
-            arr = data[var].values.astype(np.float32)
-            nan_at_time |= np.isnan(arr).any(axis=(1, 2))
-            mean, std = stats[var]['mean'], stats[var]['std']
-            self.arrays[var] = (arr - mean) / (std + 1e-8)
-
-        self.n_times = n_times
-        self.valid_indices = [
-            i for i in range(n_times - sequence_length + 1)
-            if not nan_at_time[i:i + sequence_length].any()
-        ]
-        n_dropped = (n_times - sequence_length + 1) - len(self.valid_indices)
-        print(f"    {len(self.valid_indices):,} valid windows "
-              f"({n_dropped:,} dropped -- NaN)")
-
-    def __len__(self):
-        return len(self.valid_indices)
-
-    def __getitem__(self, idx):
-        start = self.valid_indices[idx]
-        slices = [self.arrays[v][start:start + self.sequence_length]
-                  for v in self.input_vars]
-        return torch.from_numpy(np.stack(slices, axis=1)), start
-
 
 def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
                    num_workers):
@@ -301,94 +266,30 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     model.eval()
     print(f"    Model loaded from epoch {checkpoint['epoch']}")
 
-    # -- Prepare streamed output file (RAM stays bounded: one time-chunk at a time) --
+    # -- Output path + provenance attrs --
     tag_start = (start_date or str(common_times[0])[:10]).replace('-', '')
     tag_end = (end_date or str(common_times[-1])[:10]).replace('-', '')
     output_filename = f'full_record_ERA5_{tag_start}_{tag_end}.nc'
     output_path = run_dirs['output_inference'] / output_filename
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.exists():
-        output_path.unlink()
 
-    VAR_UNITS = var_units_for(output_vars)
-    target_offset = sequence_length - 1
-    time_chunk = int(inf_config.get('inference_time_chunk', 10000))
-
-    epoch0 = np.datetime64('1900-01-01T00:00:00')
-    time_hours = (time_coords.astype('datetime64[ns]') - epoch0) / np.timedelta64(1, 'h')
-
-    nc = netCDF4.Dataset(str(output_path), 'w', format='NETCDF4')
-    nc.createDimension('time', n_total)
-    nc.createDimension('y', height)
-    nc.createDimension('x', width)
-    tv = nc.createVariable('time', 'f8', ('time',))
-    tv.units = 'hours since 1900-01-01'
-    tv.calendar = 'gregorian'
-    tv[:] = time_hours
-    if y_coords is not None:
-        nc.createVariable('y', 'f8', ('y',))[:] = y_coords
-    if x_coords is not None:
-        nc.createVariable('x', 'f8', ('x',))[:] = x_coords
-    t_chunk_nc = max(1, min(720, n_total))
-    out_nc = {}
-    for var in output_vars:
-        v = nc.createVariable(var, 'f4', ('time', 'y', 'x'), zlib=True, complevel=1,
-                              chunksizes=(t_chunk_nc, height, width),
-                              fill_value=np.float32(np.nan))
-        if var in VAR_UNITS:
-            v.units = VAR_UNITS[var]
-        out_nc[var] = v
-    nc.source_checkpoint = str(checkpoint_path)
-    nc.checkpoint_epoch = int(checkpoint['epoch'])
-    nc.run_name = run_dirs['run_root'].name
-    nc.sequence_length = int(sequence_length)
+    attrs = {
+        'source_checkpoint': str(checkpoint_path),
+        'checkpoint_epoch': int(checkpoint['epoch']),
+        'run_name': run_dirs['run_root'].name,
+        'sequence_length': int(sequence_length),
+        'hr_source': str(train_config.get('hr_source', 'HR')),
+        'lr_source': str(train_config.get('lr_source', 'LR')),
+    }
     if 'crs' in train_config:
-        nc.crs = str(train_config['crs'])
-    nc.hr_source = str(train_config.get('hr_source', 'HR'))
-    nc.lr_source = str(train_config.get('lr_source', 'LR'))
+        attrs['crs'] = str(train_config['crs'])
 
-    # -- Streamed inference: iterate over blocks of sliding-window start indices --
-    n_windows = max(0, n_total - sequence_length + 1)
-    n_predicted = 0
-    n_nan_outputs = 0
-    print(f"    Streaming inference over {n_windows:,} windows "
-          f"in chunks of {time_chunk:,} (grid {height}x{width})...")
-    with torch.no_grad():
-        for s0 in tqdm(range(0, n_windows, time_chunk), desc='    Inference'):
-            e0 = min(s0 + time_chunk, n_windows)          # window-starts [s0, e0)
-            in_hi = min(e0 + target_offset, n_total)       # input rows [s0, in_hi)
-            block = full_ds.isel(time=slice(s0, in_hi)).load()
-            ds_block = _SlidingWindowDataset(block, input_vars, stats, sequence_length)
-            pred_block = {var: np.full((e0 - s0, height, width), np.nan, dtype=np.float32)
-                          for var in output_vars}
-            if len(ds_block) > 0:
-                loader = DataLoader(ds_block, batch_size=batch_size, shuffle=False,
-                                    num_workers=num_workers,
-                                    pin_memory=torch.cuda.is_available())
-                for batch_inputs, batch_starts in loader:
-                    outputs = model(batch_inputs.to(device))
-                    bnan = (~torch.isfinite(outputs)).sum().item()
-                    if bnan > 0:
-                        n_nan_outputs += bnan
-                        outputs = torch.nan_to_num(outputs, nan=0.0, posinf=0.0, neginf=0.0)
-                    outputs = outputs.cpu().numpy()
-                    for b, local_start in enumerate(batch_starts.numpy()):
-                        j = int(local_start)               # block-local window-start
-                        for c, var in enumerate(output_vars):
-                            mean, std = stats[var]['mean'], stats[var]['std']
-                            pred_block[var][j] = outputs[b, c] * (std + 1e-8) + mean
-                del loader
-            t0 = s0 + target_offset
-            t1 = e0 + target_offset
-            for var in output_vars:
-                out_nc[var][t0:t1, :, :] = pred_block[var]
-            n_predicted += int(np.isfinite(
-                next(iter(pred_block.values()))).any(axis=(1, 2)).sum())
-            del block, ds_block, pred_block
-
-    nc.close()
-    if n_nan_outputs > 0:
-        print(f"    WARNING: {n_nan_outputs:,} non-finite outputs replaced with 0.")
+    n_predicted, n_total = run_streaming_inference(
+        model, full_ds, input_vars, output_vars, stats, sequence_length,
+        output_path, device=device, batch_size=batch_size,
+        num_workers=num_workers,
+        time_chunk=int(inf_config.get('inference_time_chunk', 10000)),
+        attrs=attrs,
+    )
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"\n    Saved: {output_path} ({size_mb:.1f} MB)")
     print(f"    Predicted: {n_predicted:,} / {n_total:,} timesteps")
