@@ -25,6 +25,7 @@ RTMA_FILES = [
     "RTMA_SFbay_2p5km_dew_point_temperature_2011_2026_UTM10.nc",
     "RTMA_SFbay_2p5km_air_pressure_fixed_height_2011_2026_UTM10.nc",
     "RTMA_SFbay_2p5km_precipitation_2011_2026_UTM10.nc",
+    "RTMA_SFbay_2p5km_surface_height_static_UTM10.nc",   # static terrain input
 ]
 ERA5_FILES = [
     "ERA5_eastward_wind_1940_2026_UTM.nc",
@@ -33,6 +34,7 @@ ERA5_FILES = [
     "ERA5_dew_point_temperature_1940_2026_UTM.nc",
     "ERA5_air_pressure_fixed_height_1940_2026_UTM.nc",
     "ERA5_precipitation_1940_2026_UTM.nc",
+    "ERA5_cloud_area_fraction_1940_2026_UTM.nc",          # cloud cover input
 ]
 
 

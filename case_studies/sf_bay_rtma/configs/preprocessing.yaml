@@ -32,6 +32,12 @@ file_dict:
   hr_rain: 'RTMA_SFbay_2p5km_precipitation_2011_2026_UTM10.nc'
   lr_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
 
+  # ── Extra input-only fields (no HR target — fed in, not predicted) ───────────
+  # ERA5 cloud cover (0-1 fraction), regridded onto the RTMA grid like other lr_.
+  lr_cloud: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
+  # RTMA static surface height (terrain) — no time dim; broadcast over time.
+  static_terrain: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
+
 # Time period — full ERA5 ∩ RTMA overlap
 start_date: '2011-01-01'
 end_date: '2026-06-18'
@@ -60,3 +66,6 @@ physical_bounds:
 
   hr_rain:     {min: 0, max: 200}
   lr_rain:     {min: 0, max: 200}
+
+  lr_cloud:       {min: -0.1, max: 1.1}     # ERA5 cloud area fraction (0-1)
+  static_terrain: {min: -500, max: 5000}    # surface height (m)
