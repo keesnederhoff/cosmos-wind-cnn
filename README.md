@@ -83,7 +83,9 @@ sbatch scripts/cpu_tallgrass.slurm
 ### Monitor training
 
 ```bash
-tensorboard --logdir case_studies/sf_bay_conus404/results/<run_name>/logs
+tensorboard --logdir %COSMOS_RESULTS_ROOT%\sf_bay_conus404\results\<run_name>\logs
+# Linux/HPC:
+# tensorboard --logdir $COSMOS_RESULTS_ROOT/sf_bay_conus404/results/<run_name>/logs
 ```
 
 ## Project Structure
@@ -106,7 +108,7 @@ cosmos-wind-cnn/
 │   ├── validate_inference.py    # Station-level validation (NDBC, moorings)
 │   ├── cpu_tallgrass.slurm      # SLURM: CPU pipeline
 │   └── gpu_tallgrass.slurm      # SLURM: GPU pipeline (4x V100 DDP)
-├── case_studies/                # Per-domain configs and data
+├── case_studies/                # Per-domain configs only (data/results are external)
 │   ├── sf_bay_conus404/         # San Francisco Bay, CONUS404 HR (working example)
 │   ├── puget_sound/             # Puget Sound (in progress)
 │   └── _template/               # Template for new case studies
@@ -116,15 +118,32 @@ cosmos-wind-cnn/
 └── pyproject.toml               # Package definition
 ```
 
-## Run Directory Layout
+## Storage Layout
 
-All outputs for a run are organized under `results/<run_name>/`:
+Data and results live **outside the repo**, controlled by two environment variables that must be set before running anything (the code raises a clear error if either is unset):
+
+```bat
+:: Windows (locally, point both at your storage drive)
+set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
+```
+```bash
+# Linux / HPC: exported by the Tallgrass SLURM scripts (caldera base)
+export COSMOS_DATA_ROOT=/caldera/...
+export COSMOS_RESULTS_ROOT=/caldera/...
+```
+
+The repo case-study folders hold **only** `configs/` + `README.md`. Everything else is external:
 
 ```
-case_studies/sf_bay_conus404/
-├── data/raw/                              # Raw NetCDF input files (shared)
-├── configs/                               # YAML configs (shared)
-└── results/<run_name>/                    # Everything for one run
+<COSMOS_DATA_ROOT>/<case>/raw_data/        # Raw NetCDF input files (shared across runs)
+    e.g. G:\03-downscaling_meteo_cnn\sf_bay_conus404\raw_data\
+
+case_studies/<case>/                       # Repo: configs + README only
+├── configs/                               # YAML configs (checked into git)
+└── README.md
+
+<COSMOS_RESULTS_ROOT>/<case>/results/<job>/   # Per-run outputs (external)
     ├── checkpoint/                        # best_model.pth, archived configs, training_loss.png
     ├── data_processed/                    # train.nc, val.nc, test.nc, normalization_stats.pkl,
     │                                      #   target_grid_reference.nc
@@ -144,7 +163,7 @@ This CNN expects LR and HR data **already interpolated to the same grid** (e.g.,
 
 See [docs/data_preparation.md](docs/data_preparation.md) for details and example scripts.
 
-**Data is not included in this repository.** Each case study's `data/raw/` directory should contain one NetCDF file per variable, with matching spatial grids and time coordinates.
+**Data is not included in this repository.** Raw NetCDF files live in `$COSMOS_DATA_ROOT/<case>/raw_data/` (one file per variable, matching spatial grids and time coordinates). Set the env var before running anything — see the Storage Layout section above.
 
 ## Case Studies
 
