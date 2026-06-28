@@ -64,6 +64,13 @@ class WindDataset3D(Dataset):
         # Calculate valid indices
         self.valid_indices = self._get_valid_indices()
 
+        # Close the file handle opened above so it is NOT inherited across
+        # DataLoader worker forks (NetCDF/HDF5 handles are not fork-safe and
+        # can deadlock or corrupt). Each worker reopens its own handle lazily
+        # in __getitem__ after the fork.
+        self.data.close()
+        self.data = None
+
         if self.verbose:
             print(f"Dataset initialized:")
             print(f"  Samples: {len(self.valid_indices)}")
@@ -114,6 +121,9 @@ class WindDataset3D(Dataset):
             input: (sequence_length, n_input_vars, height, width)
             target: (n_output_vars, height, width)
         """
+        if self.data is None:
+            self.data = xr.open_dataset(self.netcdf_path)
+
         start_idx = self.valid_indices[idx]
         end_idx = start_idx + self.sequence_length
         target_idx = end_idx + self.forecast_horizon - 1

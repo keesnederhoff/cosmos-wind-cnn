@@ -46,7 +46,7 @@ weight_decay: 0.001
 num_workers: 8
 
 # Data Loading
-load_in_memory: true
+load_in_memory: false
 train_stride: 1
 val_stride: 6
 
