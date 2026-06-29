@@ -50,7 +50,7 @@ class WindDataset3D(Dataset):
         # Load data
         if self.verbose:
             print(f"Loading data from {netcdf_path}")
-        self.data = xr.open_dataset(netcdf_path)
+        self.data = xr.open_dataset(netcdf_path, cache=False)
 
         # Load normalization statistics
         with open(stats_path, 'rb') as f:
@@ -122,7 +122,7 @@ class WindDataset3D(Dataset):
             target: (n_output_vars, height, width)
         """
         if self.data is None:
-            self.data = xr.open_dataset(self.netcdf_path)
+            self.data = xr.open_dataset(self.netcdf_path, cache=False)
 
         start_idx = self.valid_indices[idx]
         end_idx = start_idx + self.sequence_length
