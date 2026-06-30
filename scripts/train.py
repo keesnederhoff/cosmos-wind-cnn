@@ -30,6 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
 from cosmos_wind_cnn.data.dataset import WindDataset3D, WindDatasetInMemory
+from cosmos_wind_cnn.data.dataset_memmap import WindDatasetMemmap
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET
 from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.trainer import train_one_epoch, validate
@@ -137,7 +138,12 @@ def main():
     data_dir = run_dirs['data_processed']
     stats_path = str(data_dir / 'normalization_stats.pkl')
 
-    DatasetClass = WindDatasetInMemory if config.get('load_in_memory', False) else WindDataset3D
+    if config.get('use_memmap', False):
+        DatasetClass = WindDatasetMemmap
+    elif config.get('load_in_memory', False):
+        DatasetClass = WindDatasetInMemory
+    else:
+        DatasetClass = WindDataset3D
 
     train_dataset = DatasetClass(
         netcdf_path=str(data_dir / 'train.nc'),

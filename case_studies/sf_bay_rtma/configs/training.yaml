@@ -47,6 +47,7 @@ num_workers: 8
 
 # Data Loading
 load_in_memory: false
+use_memmap: true
 train_stride: 1
 val_stride: 6
 
