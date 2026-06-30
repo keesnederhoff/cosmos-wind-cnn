@@ -107,6 +107,18 @@ def main():
             print(f"Distributed: {world_size} GPU(s) across {world_size // 4} node(s)")
 
     # Parse variable configuration
+    # --- Sweep hyperparameter overrides (env-based; baseline used when unset) ---
+    for _env, _key, _cast in [('SWEEP_BASE_CHANNELS', 'base_channels', int),
+                              ('SWEEP_SEQ_LEN', 'sequence_length', int),
+                              ('SWEEP_DROPOUT', 'dropout_rate', float),
+                              ('SWEEP_LR', 'learning_rate', float)]:
+        if os.environ.get(_env):
+            config[_key] = _cast(os.environ[_env])
+    if is_main:
+        print(f"  Effective: base_channels={config['base_channels']}, "
+              f"sequence_length={config['sequence_length']}, "
+              f"dropout_rate={config['dropout_rate']}, learning_rate={config['learning_rate']}")
+
     input_vars, output_vars, wind_pair_indices = parse_variable_config(config)
 
     if is_main:

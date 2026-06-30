@@ -188,6 +188,11 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     inf_config = load_config(checkpoint_dir / 'inference_preprocessing.yaml')
 
     input_vars, output_vars, _ = parse_variable_config(train_config)
+    for _env, _key, _cast in [('SWEEP_BASE_CHANNELS', 'base_channels', int),
+                              ('SWEEP_SEQ_LEN', 'sequence_length', int),
+                              ('SWEEP_DROPOUT', 'dropout_rate', float)]:
+        if os.environ.get(_env):
+            train_config[_key] = _cast(os.environ[_env])
     sequence_length = train_config['sequence_length']
 
     # Stats from training
