@@ -65,3 +65,9 @@ case_studies/*/outputs/
 *.bak*
 sweep_logs/
 docs/superpowers/
+
+# validation run outputs and any locally-staged data
+validation/results/
+validation/**/*.nc
+validation/**/*.png
+validation/**/*.pptx
