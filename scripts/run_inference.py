@@ -43,7 +43,7 @@ import torch
 import xarray as xr
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.inference import run_streaming_inference
-from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs, get_data_dir
 
 
@@ -232,18 +232,15 @@ def main():
 
     checkpoint = torch.load(checkpoint_dir / 'best_model.pth',
                             map_location=device, weights_only=False)
-    model = Wind3DUNET(
-        in_channels=len(input_vars),
-        out_channels=len(output_vars),
-        base_channels=train_config['base_channels'],
-        dropout_rate=train_config['dropout_rate'],
-    ).to(device)
+
+    # Loaded before the model: residual mode needs the stats to build its skip affine.
+    with open(processed_dir / 'normalization_stats.pkl', 'rb') as f:
+        stats = pickle.load(f)
+
+    model = build_wind3dunet(train_config, stats, input_vars, output_vars).to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     print(f"  Loaded from epoch {checkpoint['epoch']}")
-
-    with open(processed_dir / 'normalization_stats.pkl', 'rb') as f:
-        stats = pickle.load(f)
 
     # ── Inference + save ─────────────────────────────────────────────────
     print("\n" + "=" * 70)

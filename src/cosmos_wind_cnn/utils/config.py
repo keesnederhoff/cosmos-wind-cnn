@@ -3,6 +3,7 @@ Configuration parsing utilities
 """
 
 import os
+import numpy as np
 import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -103,6 +104,89 @@ def parse_variable_config(config: dict) -> Tuple[List[str], List[str], List[Tupl
                              in zip(u_indices, v_indices)]
 
     return input_vars, output_vars, wind_pair_indices
+
+
+def env_bool(value: str) -> bool:
+    """Parse an env-var string as a boolean.
+
+    Needed because `bool("0")` is True in Python, so a plain bool cast in the
+    SWEEP_* override table would make `SWEEP_RESIDUAL=0` silently ENABLE
+    residual mode.
+    """
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def env_list(value: str) -> List[str]:
+    """Parse a comma-separated env-var string into a list of names."""
+    return [p.strip() for p in str(value).split(',') if p.strip()]
+
+
+def residual_channel_map(config: dict, input_vars: List[str],
+                         output_vars: List[str]) -> List[int]:
+    """Index into `input_vars` of the low-res counterpart of each output var.
+
+    Residual learning adds the (already interpolated) low-res field back onto the
+    network output, so each high-res target needs the position of its paired
+    low-res input channel. Derived explicitly from `variable_pairs` rather than
+    assuming the identity mapping that `parse_variable_config` happens to produce
+    today, so a reordering of variable_pairs can never silently mis-pair channels.
+    """
+    lr_for_hr = {pair['high_res']: pair['low_res']
+                 for pair in config['variable_pairs'].values()}
+    idx = []
+    for hr in output_vars:
+        if hr not in lr_for_hr:
+            raise KeyError(
+                f"residual_learning: output '{hr}' has no low_res counterpart in "
+                f"variable_pairs; residual mode requires every output to be paired."
+            )
+        lr = lr_for_hr[hr]
+        if lr not in input_vars:
+            raise KeyError(
+                f"residual_learning: low_res '{lr}' (paired with '{hr}') is not in "
+                f"input_vars {input_vars}"
+            )
+        idx.append(input_vars.index(lr))
+    return idx
+
+
+def residual_affine(stats: dict, config: dict, output_vars: List[str]):
+    """Per-output-channel (scale, shift) taking a normalized low-res input into
+    the normalized high-res target space.
+
+    Inputs and targets are each z-scored with their OWN mean/std, so the residual
+    skip is NOT an identity in normalized space. With the dataset's convention
+    (see WindDatasetMemmap.normalize/denormalize, which use `std + 1e-8`)::
+
+        lr_phys = lr_norm * (sd_lr + 1e-8) + mu_lr
+        hr_norm = (hr_phys - mu_hr) / (sd_hr + 1e-8)
+
+    substituting hr_phys ~= lr_phys gives ``hr_norm ~= scale * lr_norm + shift``::
+
+        scale = (sd_lr + 1e-8) / (sd_hr + 1e-8)
+        shift = (mu_lr - mu_hr) / (sd_hr + 1e-8)
+
+    Omitting this rescale still trains without error but learns a biased offset,
+    so it is the one silent-failure mode of residual mode.
+
+    Returns (scale, shift) float32 arrays of length len(output_vars).
+    """
+    lr_for_hr = {pair['high_res']: pair['low_res']
+                 for pair in config['variable_pairs'].values()}
+    scale, shift = [], []
+    for hr in output_vars:
+        lr = lr_for_hr[hr]
+        for name in (hr, lr):
+            if name not in stats:
+                raise KeyError(
+                    f"residual_learning: '{name}' missing from normalization stats"
+                )
+        sd_hr = stats[hr]['std'] + 1e-8
+        sd_lr = stats[lr]['std'] + 1e-8
+        scale.append(sd_lr / sd_hr)
+        shift.append((stats[lr]['mean'] - stats[hr]['mean']) / sd_hr)
+    return (np.asarray(scale, dtype=np.float32),
+            np.asarray(shift, dtype=np.float32))
 
 
 def classify_file_keys(file_dict, target_prefix: str = 'hr_',

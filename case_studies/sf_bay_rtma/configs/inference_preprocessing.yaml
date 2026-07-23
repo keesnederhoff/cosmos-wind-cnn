@@ -29,6 +29,25 @@ sources:
   static_terrain:
     file: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
     source_var: null
+  # Derived high-res statics (scripts/make_derived_terrain.py). Listed here so
+  # they are available whenever training.yaml's additional_inputs selects them;
+  # unused entries are simply regridded and ignored. source_var is explicit to
+  # avoid the "first data var" fallback.
+  static_dhdx:
+    file: 'RTMA_SFbay_2p5km_static_dhdx_static_UTM10.nc'
+    source_var: 'static_dhdx'
+  static_dhdy:
+    file: 'RTMA_SFbay_2p5km_static_dhdy_static_UTM10.nc'
+    source_var: 'static_dhdy'
+  static_landsea:
+    file: 'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
+    source_var: 'static_landsea'
+  static_tpi:
+    file: 'RTMA_SFbay_2p5km_static_tpi_static_UTM10.nc'
+    source_var: 'static_tpi'
+  static_distcoast:
+    file: 'RTMA_SFbay_2p5km_static_distcoast_static_UTM10.nc'
+    source_var: 'static_distcoast'
 
 # Full ERA5 record (long hindcast). Note: the model is trained only on 2011-2026,
 # so inference before ~2011 extrapolates — treat early years as lower-confidence.
@@ -47,3 +66,10 @@ physical_bounds:
   lr_rain:     {min: 0,     max: 200}
   lr_cloud:       {min: -0.1, max: 1.1}     # ERA5 cloud area fraction (0-1)
   static_terrain: {min: -500, max: 5000}    # surface height (m)
+  # MUST stay identical to preprocessing.yaml, or training and inference mask
+  # these channels differently.
+  static_dhdx:      {min: -10,   max: 10}      # d elev / dx (m/m)
+  static_dhdy:      {min: -10,   max: 10}      # d elev / dy (m/m)
+  static_landsea:   {min: -0.1,  max: 1.1}     # 1 = land, 0 = water
+  static_tpi:       {min: -2000, max: 2000}    # elevation - smoothed elevation (m)
+  static_distcoast: {min: -1,    max: 1000}    # distance to water (km)

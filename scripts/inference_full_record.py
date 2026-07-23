@@ -24,7 +24,7 @@ import torch
 import xarray as xr
 
 from cosmos_wind_cnn.inference import run_streaming_inference
-from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
 
 
@@ -91,12 +91,12 @@ def main():
         print(f"Error: required key {e} missing from training config.")
         return
 
-    model = Wind3DUNET(
-        in_channels=len(input_vars),
-        out_channels=len(output_vars),
-        base_channels=base_channels,
-        dropout_rate=dropout_rate,
-    ).to(device)
+    # ── Load normalization stats ─────────────────────────────────────────────
+    # Before the model: residual mode needs them to build its skip affine.
+    with open(stats_path, 'rb') as f:
+        stats = pickle.load(f)
+
+    model = build_wind3dunet(config, stats, input_vars, output_vars).to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
@@ -104,11 +104,8 @@ def main():
     print(f"Input vars:    {input_vars}")
     print(f"Output vars:   {output_vars}")
     print(f"Sequence len:  {sequence_length}")
-    print(f"base_channels: {base_channels}  dropout_rate: {dropout_rate}")
-
-    # ── Load normalization stats ─────────────────────────────────────────────
-    with open(stats_path, 'rb') as f:
-        stats = pickle.load(f)
+    print(f"base_channels: {base_channels}  dropout_rate: {dropout_rate}  "
+          f"residual_learning: {config.get('residual_learning', False)}")
 
     # ── Compute load window (pad start by sequence_length-1 for valid windows) ─
     # We need (sequence_length - 1) extra timesteps before the user's start date

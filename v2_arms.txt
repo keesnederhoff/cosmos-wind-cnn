@@ -1,0 +1,9 @@
+# run_name          bc  residual  additional_inputs
+v2_ctrl_bc8          8  0         lr_cloud,static_terrain
+v2_res_bc8           8  1         lr_cloud,static_terrain
+v2_terr_bc8          8  0         lr_cloud,static_terrain,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+v2_res_terr_bc8      8  1         lr_cloud,static_terrain,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+v2_ctrl_bc24        24  0         lr_cloud,static_terrain
+v2_res_bc24         24  1         lr_cloud,static_terrain
+v2_terr_bc24        24  0         lr_cloud,static_terrain,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+v2_res_terr_bc24    24  1         lr_cloud,static_terrain,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast

@@ -45,9 +45,10 @@ from tqdm import tqdm
 from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
 from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.data.regridder import Regridder
-from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.utils.config import (
     load_config, parse_variable_config, get_run_dirs, get_data_dir, var_units_for, wind_var_names,
+    env_bool, env_list,
 )
 from cosmos_wind_cnn.utils.visualization import plot_normalization_stats, plot_spatial_stats
 
@@ -187,12 +188,19 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     train_config = load_config(checkpoint_dir / 'training.yaml')
     inf_config = load_config(checkpoint_dir / 'inference_preprocessing.yaml')
 
-    input_vars, output_vars, _ = parse_variable_config(train_config)
+    # Apply env overrides BEFORE parsing variables: SWEEP_ADD_INPUTS changes
+    # additional_inputs, which parse_variable_config turns into input channels.
+    # (Previously the overrides ran after the parse, so ADD_INPUTS would have been
+    # silently ignored here and inference would build a mis-shaped model.)
     for _env, _key, _cast in [('SWEEP_BASE_CHANNELS', 'base_channels', int),
                               ('SWEEP_SEQ_LEN', 'sequence_length', int),
-                              ('SWEEP_DROPOUT', 'dropout_rate', float)]:
+                              ('SWEEP_DROPOUT', 'dropout_rate', float),
+                              ('SWEEP_RESIDUAL', 'residual_learning', env_bool),
+                              ('SWEEP_ADD_INPUTS', 'additional_inputs', env_list)]:
         if os.environ.get(_env):
             train_config[_key] = _cast(os.environ[_env])
+
+    input_vars, output_vars, _ = parse_variable_config(train_config)
     sequence_length = train_config['sequence_length']
 
     # Stats from training
@@ -279,12 +287,7 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     checkpoint_path = checkpoint_dir / 'best_model.pth'
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    model = Wind3DUNET(
-        in_channels=len(input_vars),
-        out_channels=len(output_vars),
-        base_channels=train_config['base_channels'],
-        dropout_rate=train_config['dropout_rate'],
-    ).to(device)
+    model = build_wind3dunet(train_config, stats, input_vars, output_vars).to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     print(f"    Model loaded from epoch {checkpoint['epoch']}")
@@ -429,6 +432,16 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
         rmse_e5 = float(np.sqrt(np.nanmean((e5_ws[mask] - tru_ws[mask])**2)))
         ss = 1.0 - rmse_mod / rmse_e5 if rmse_e5 > 0 else np.nan
 
+        # GOAL-3 metric: skill conditioned on EXTREME true winds (>10 m/s)
+        ext = mask & (tru_ws > 10.0)
+        n_ext = int(ext.sum())
+        if n_ext >= 10:
+            rmse_mod_ext = float(np.sqrt(np.nanmean((mod_ws[ext] - tru_ws[ext])**2)))
+            rmse_e5_ext = float(np.sqrt(np.nanmean((e5_ws[ext] - tru_ws[ext])**2)))
+            ss_ext = 1.0 - rmse_mod_ext / rmse_e5_ext if rmse_e5_ext > 0 else np.nan
+        else:
+            rmse_mod_ext = rmse_e5_ext = ss_ext = np.nan
+
         rmse_mod_u = float(np.sqrt(np.nanmean((mod_u[mask] - tru_u[mask])**2)))
         rmse_e5_u = float(np.sqrt(np.nanmean((e5_u[mask] - tru_u[mask])**2)))
         rmse_mod_v = float(np.sqrt(np.nanmean((mod_v[mask] - tru_v[mask])**2)))
@@ -440,6 +453,8 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'skill_score_ws': ss,
             'rmse_model_u': rmse_mod_u, 'rmse_lr_u': rmse_e5_u,
             'rmse_model_v': rmse_mod_v, 'rmse_lr_v': rmse_e5_v,
+            'rmse_model_ws_ext': rmse_mod_ext, 'rmse_lr_ws_ext': rmse_e5_ext,
+            'skill_score_ws_ext': ss_ext, 'n_ext': n_ext,
         })
         running_ss.append(ss)
 
@@ -466,6 +481,14 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'mean_rmse_model': mean_rmse_model,
             'mean_rmse_lr': mean_rmse_lr,
         },
+        'wind_speed_extreme_10ms': {
+            'median_skill_score': float(np.nanmedian(df['skill_score_ws_ext'])),
+            'mean_skill_score': float(np.nanmean(df['skill_score_ws_ext'])),
+            'mean_rmse_model': float(np.nanmean(df['rmse_model_ws_ext'])),
+            'mean_rmse_lr': float(np.nanmean(df['rmse_lr_ws_ext'])),
+            'n_points_with_extremes': int((df['n_ext'] >= 10).sum()),
+            'mean_extreme_hours_per_point': float(df['n_ext'].mean()),
+        },
     }
     with open(output_dir / 'grid_point_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
@@ -475,6 +498,11 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     print(f"      Wind speed RMSE  LR:    {mean_rmse_lr:.3f} m/s")
     print(f"      Skill score (median):   {med_ss:.3f}")
     print(f"      Skill score (mean):     {mean_ss:.3f}")
+    _ss_ext = float(np.nanmedian(df['skill_score_ws_ext']))
+    _rm_ext = float(np.nanmean(df['rmse_model_ws_ext']))
+    _rl_ext = float(np.nanmean(df['rmse_lr_ws_ext']))
+    print(f"      [>10 m/s] skill (median): {_ss_ext:.3f}  "
+          f"RMSE model {_rm_ext:.3f} / LR {_rl_ext:.3f} m/s")
     print(f"    Saved to: {output_dir}")
 
     # Close datasets

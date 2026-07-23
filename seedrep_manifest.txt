@@ -1,0 +1,9 @@
+# run_name          nonwind_weight   (all bc8 sl6 do0.0 lr3e-4, residual OFF, 8-channel)
+sr_av_ctrl_bc8_s1   1.0
+sr_av_ctrl_bc8_s2   1.0
+sr_av_ctrl_bc8_s3   1.0
+sr_av_ctrl_bc8_s4   1.0
+sr_wo_ctrl_bc8_s1   0.0
+sr_wo_ctrl_bc8_s2   0.0
+sr_wo_ctrl_bc8_s3   0.0
+sr_wo_ctrl_bc8_s4   0.0

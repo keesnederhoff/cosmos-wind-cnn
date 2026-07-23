@@ -88,11 +88,39 @@ class WindDatasetMemmap(Dataset):
         with open(stats_path, "rb") as f:
             self.stats = pickle.load(f)
 
+        # --- static (time-invariant) channels: cache ONE plane, broadcast later ---
+        # convert_to_memmap writes statics as a full (T, H, W) block of identical
+        # planes, so terrain-style channels cost T x H x W x 4 bytes on disk and,
+        # worse, get paged in every epoch: 5 derived statics = 36.5 GB of repeated
+        # numbers, which measured ~8x slower per epoch (80 min vs 10 min) than the
+        # same model without them. Each plane holds only H x W unique values, so we
+        # read plane 0 once here, normalize it once, and broadcast per sample. The
+        # tensors handed to the model are numerically IDENTICAL to reading the
+        # memmap -- this is purely an I/O optimization.
+        self._static = {}
+        for var in set(input_vars) | set(output_vars):
+            if not var.startswith("static_"):
+                continue
+            plane0 = np.asarray(self._mm[var][0], dtype=np.float32)
+            # Trust but verify: a 'static_' name that actually varies in time would
+            # silently corrupt training, so probe a couple of other timesteps.
+            for t in {self.n_times // 2, self.n_times - 1}:
+                if not np.array_equal(np.asarray(self._mm[var][t], dtype=np.float32),
+                                      plane0):
+                    raise ValueError(
+                        f"'{var}' is named static_* but varies in time (differs at "
+                        f"t={t}); refusing to broadcast a single plane."
+                    )
+            self._static[var] = self.normalize(plane0, var)
+
         nan_at_time = np.load(mdir / "nan_at_time.npy")
         self.valid_indices = self._get_valid_indices(nan_at_time)
 
         if verbose:
             print("Memmap dataset initialized:")
+            if self._static:
+                print(f"  Static channels broadcast (not paged): "
+                      f"{sorted(self._static)}")
             print(f"  Samples: {len(self.valid_indices)}")
             print(f"  Input shape: ({sequence_length}, {len(input_vars)}, "
                   f"{self.height}, {self.width})")
@@ -132,15 +160,27 @@ class WindDatasetMemmap(Dataset):
 
         input_data = []
         for var in self.input_vars:
-            arr = np.asarray(self._mm[var][start_idx:end_idx], dtype=np.float32)
-            input_data.append(self.normalize(arr, var))
-        # (seq_len, n_input_vars, H, W)
+            cached = self._static.get(var)
+            if cached is not None:
+                # Already normalized; broadcast the single plane over the window
+                # instead of paging sequence_length identical copies off Lustre.
+                arr = np.broadcast_to(cached, (self.sequence_length,) + cached.shape)
+            else:
+                arr = self.normalize(
+                    np.asarray(self._mm[var][start_idx:end_idx], dtype=np.float32), var)
+            input_data.append(arr)
+        # (seq_len, n_input_vars, H, W) -- np.stack copies, so the broadcast view is fine
         input_tensor = torch.from_numpy(np.stack(input_data, axis=1)).float()
 
         target_data = []
         for var in self.output_vars:
-            arr = np.asarray(self._mm[var][target_idx], dtype=np.float32)
-            target_data.append(self.normalize(arr, var))
+            cached = self._static.get(var)
+            if cached is not None:
+                arr = cached
+            else:
+                arr = self.normalize(
+                    np.asarray(self._mm[var][target_idx], dtype=np.float32), var)
+            target_data.append(arr)
         # (n_output_vars, H, W)
         target_tensor = torch.from_numpy(np.stack(target_data, axis=0)).float()
 

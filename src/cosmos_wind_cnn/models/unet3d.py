@@ -14,18 +14,61 @@ class Wind3DUNET(nn.Module):
     Output: (batch, out_channels, H, W)
     """
 
-    def __init__(self, in_channels, out_channels, base_channels=32, dropout_rate=0.0):
+    def __init__(self, in_channels, out_channels, base_channels=32, dropout_rate=0.0,
+                 residual_learning=False, residual_idx=None,
+                 residual_scale=None, residual_shift=None):
         """
         Args:
             in_channels: Number of input channels (variables)
             out_channels: Number of output channels (predicted variables)
             base_channels: Base number of feature channels (will be multiplied)
             dropout_rate: Dropout probability in each conv block (0 = disabled)
+            residual_learning: If True, predict the fine-scale correction and add
+                the (already interpolated) low-res input back on. Default False
+                leaves the forward pass byte-for-byte identical to before.
+            residual_idx: Input-channel index of the low-res counterpart of each
+                output channel (see utils.config.residual_channel_map).
+            residual_scale, residual_shift: Per-output-channel affine taking the
+                normalized low-res input into normalized high-res target space
+                (see utils.config.residual_affine). Required when
+                residual_learning is True -- without them the skip adds a field
+                normalized by the WRONG statistics.
+
+        Prefer the build_wind3dunet() factory below, which wires all of this from
+        a training config + normalization stats.
         """
         super(Wind3DUNET, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.residual_learning = bool(residual_learning)
+
+        if self.residual_learning:
+            if residual_idx is None or residual_scale is None or residual_shift is None:
+                raise ValueError(
+                    "residual_learning=True requires residual_idx, residual_scale and "
+                    "residual_shift (build via utils.config.residual_channel_map / "
+                    "residual_affine)."
+                )
+            if not (len(residual_idx) == len(residual_scale)
+                    == len(residual_shift) == out_channels):
+                raise ValueError(
+                    f"residual_* lengths must all equal out_channels={out_channels}; got "
+                    f"idx={len(residual_idx)}, scale={len(residual_scale)}, "
+                    f"shift={len(residual_shift)}"
+                )
+            # persistent=False keeps state_dict identical to a non-residual model,
+            # so old checkpoints still load strictly and the checkpoint schema is
+            # unchanged. The flag itself lives in the training config.
+            self.register_buffer('residual_idx',
+                                 torch.as_tensor(list(residual_idx), dtype=torch.long),
+                                 persistent=False)
+            self.register_buffer('residual_scale',
+                                 torch.as_tensor(residual_scale, dtype=torch.float32)
+                                 .view(1, -1, 1, 1), persistent=False)
+            self.register_buffer('residual_shift',
+                                 torch.as_tensor(residual_shift, dtype=torch.float32)
+                                 .view(1, -1, 1, 1), persistent=False)
 
         # Encoder
         self.enc1 = self.conv_block_3d(in_channels, base_channels, dropout_rate)
@@ -150,4 +193,52 @@ class Wind3DUNET(nn.Module):
 
         output = self.out(d1_last)
 
+        if self.residual_learning:
+            # x is (batch, channels, seq_len, H, W) after the permute above. The
+            # lr_* inputs were already interpolated onto the target grid during
+            # preprocessing, and with forecast_horizon=0 the LAST input timestep
+            # is the target timestep -- so no upsampling is needed here.
+            lr_last = x[:, self.residual_idx, -1, :, :]  # (batch, out_channels, H, W)
+            output = output + self.residual_scale * lr_last + self.residual_shift
+
         return output
+
+
+def build_wind3dunet(train_config, stats, input_vars, output_vars):
+    """Construct a Wind3DUNET from a training config (+ normalization stats).
+
+    Single place that decides whether residual mode is on, so every call site
+    (train / pipeline / inference / evaluate) stays consistent. Uses .get() for
+    the new keys so configs archived before residual mode existed still load and
+    reproduce their original behaviour.
+    """
+    # Imported here to avoid a circular import at module load.
+    from cosmos_wind_cnn.utils.config import residual_affine, residual_channel_map
+
+    residual = bool(train_config.get('residual_learning', False))
+    kwargs = {}
+    if residual:
+        # Residual mode assumes the last input timestep IS the target timestep.
+        horizon = train_config.get('forecast_horizon', 0)
+        if horizon != 0:
+            raise ValueError(
+                f"residual_learning requires forecast_horizon=0 (got {horizon}): the "
+                f"skip connection uses the last input timestep as the target timestep."
+            )
+        if stats is None:
+            raise ValueError("residual_learning=True requires normalization stats.")
+        scale, shift = residual_affine(stats, train_config, output_vars)
+        kwargs = dict(
+            residual_learning=True,
+            residual_idx=residual_channel_map(train_config, input_vars, output_vars),
+            residual_scale=scale,
+            residual_shift=shift,
+        )
+
+    return Wind3DUNET(
+        in_channels=len(input_vars),
+        out_channels=len(output_vars),
+        base_channels=train_config.get('base_channels', 32),
+        dropout_rate=train_config.get('dropout_rate', 0.0),
+        **kwargs,
+    )

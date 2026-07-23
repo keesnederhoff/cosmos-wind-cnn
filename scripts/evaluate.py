@@ -11,6 +11,7 @@ Usage:
 import argparse
 import json
 import os
+import pickle
 from pathlib import Path
 
 import torch
@@ -20,7 +21,7 @@ from tqdm import tqdm
 import xarray as xr
 
 from cosmos_wind_cnn.data.dataset import WindDataset3D
-from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.metrics import calculate_all_metrics
 from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
@@ -172,17 +173,18 @@ def main():
         return
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = Wind3DUNET(
-        in_channels=len(input_vars),
-        out_channels=len(output_vars),
-        base_channels=config.get('base_channels', 32),
-        dropout_rate=config.get('dropout_rate', 0.0),
-    ).to(device)
+
+    # Stats are needed to build the residual skip's affine when residual mode is on.
+    with open(data_dir / 'normalization_stats.pkl', 'rb') as f:
+        _stats = pickle.load(f)
+
+    model = build_wind3dunet(config, _stats, input_vars, output_vars).to(device)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded model from epoch {checkpoint['epoch']}")
 
     criterion = CombinedLoss(
         wind_pair_indices=wind_pair_indices,
+        nonwind_weight=config.get('loss_nonwind_weight', 1.0),
         alpha=config.get('loss_alpha', 1.0),
         beta=config.get('loss_beta', 0.5),
         gamma=config.get('loss_gamma', 0.3),

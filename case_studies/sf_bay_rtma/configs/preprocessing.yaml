@@ -38,6 +38,18 @@ file_dict:
   # RTMA static surface height (terrain) — no time dim; broadcast over time.
   static_terrain: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
 
+  # Derived high-res static predictors (scripts/make_derived_terrain.py).
+  # Materialized into train.nc so they are AVAILABLE, but only become model
+  # channels when listed in training.yaml's `additional_inputs` — the two configs
+  # are decoupled, so leaving them out of additional_inputs keeps the baseline.
+  # Statics have no time dim, so they are excluded from the common-time
+  # intersection and CANNOT shift the train/val/test split.
+  static_dhdx:      'RTMA_SFbay_2p5km_static_dhdx_static_UTM10.nc'
+  static_dhdy:      'RTMA_SFbay_2p5km_static_dhdy_static_UTM10.nc'
+  static_landsea:   'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
+  static_tpi:       'RTMA_SFbay_2p5km_static_tpi_static_UTM10.nc'
+  static_distcoast: 'RTMA_SFbay_2p5km_static_distcoast_static_UTM10.nc'
+
 # Time period — full ERA5 ∩ RTMA overlap
 start_date: '2011-01-01'
 end_date: '2026-06-18'
@@ -69,3 +81,13 @@ physical_bounds:
 
   lr_cloud:       {min: -0.1, max: 1.1}     # ERA5 cloud area fraction (0-1)
   static_terrain: {min: -500, max: 5000}    # surface height (m)
+
+  # Derived statics. Bounds are deliberately permissive: out-of-bounds values are
+  # turned into NaN, and a single NaN in a time-constant channel makes every
+  # timestep invalid -> a silent zero-sample training set. Gradients MUST allow
+  # negatives. Keep these identical to inference_preprocessing.yaml.
+  static_dhdx:      {min: -10,   max: 10}      # d elev / dx (m/m)
+  static_dhdy:      {min: -10,   max: 10}      # d elev / dy (m/m)
+  static_landsea:   {min: -0.1,  max: 1.1}     # 1 = land, 0 = water
+  static_tpi:       {min: -2000, max: 2000}    # elevation - smoothed elevation (m)
+  static_distcoast: {min: -1,    max: 1000}    # distance to water (km)

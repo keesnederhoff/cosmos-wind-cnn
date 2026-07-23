@@ -17,6 +17,7 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 import argparse
+import pickle
 from pathlib import Path
 import time
 from datetime import timedelta
@@ -31,10 +32,13 @@ import matplotlib.pyplot as plt
 
 from cosmos_wind_cnn.data.dataset import WindDataset3D, WindDatasetInMemory
 from cosmos_wind_cnn.data.dataset_memmap import WindDatasetMemmap
-from cosmos_wind_cnn.models.unet3d import Wind3DUNET
+from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.training.losses import CombinedLoss
 from cosmos_wind_cnn.training.trainer import train_one_epoch, validate
-from cosmos_wind_cnn.utils.config import load_config, parse_variable_config, get_run_dirs
+from cosmos_wind_cnn.utils.config import (
+    load_config, parse_variable_config, get_run_dirs,
+    env_bool as _env_bool, env_list as _env_list,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -111,13 +115,23 @@ def main():
     for _env, _key, _cast in [('SWEEP_BASE_CHANNELS', 'base_channels', int),
                               ('SWEEP_SEQ_LEN', 'sequence_length', int),
                               ('SWEEP_DROPOUT', 'dropout_rate', float),
-                              ('SWEEP_LR', 'learning_rate', float)]:
+                              ('SWEEP_LR', 'learning_rate', float),
+                              ('SWEEP_RESIDUAL', 'residual_learning', _env_bool),
+                              ('SWEEP_ADD_INPUTS', 'additional_inputs', _env_list),
+                              ('SWEEP_NONWIND_WEIGHT', 'loss_nonwind_weight', float),
+                              ('SWEEP_EXTREME_WEIGHT', 'loss_delta', float),
+                              ('SWEEP_EXTREME_THRESH', 'loss_extreme_threshold', float)]:
         if os.environ.get(_env):
             config[_key] = _cast(os.environ[_env])
     if is_main:
+        _nww = config.get('loss_nonwind_weight', 1.0)
+        _goal = 'WIND-ONLY' if _nww == 0.0 else ('all-variables' if _nww == 1.0 else 'wind-weighted')
         print(f"  Effective: base_channels={config['base_channels']}, "
               f"sequence_length={config['sequence_length']}, "
-              f"dropout_rate={config['dropout_rate']}, learning_rate={config['learning_rate']}")
+              f"dropout_rate={config['dropout_rate']}, learning_rate={config['learning_rate']}, "
+              f"residual_learning={config.get('residual_learning', False)}")
+        print(f"  Effective additional_inputs: {config.get('additional_inputs')}")
+        print(f"  Optimization goal: {_goal} (loss_nonwind_weight={_nww})")
 
     input_vars, output_vars, wind_pair_indices = parse_variable_config(config)
 
@@ -221,12 +235,12 @@ def main():
     in_channels = len(input_vars)
     out_channels = len(output_vars)
 
-    model = Wind3DUNET(
-        in_channels=in_channels,
-        out_channels=out_channels,
-        base_channels=config.get('base_channels', 32),
-        dropout_rate=config.get('dropout_rate', 0.0),
-    ).to(device)
+    # Stats are needed to build the residual skip's affine (lr-normalized ->
+    # hr-normalized). Harmless to load when residual mode is off.
+    with open(stats_path, 'rb') as f:
+        _stats = pickle.load(f)
+
+    model = build_wind3dunet(config, _stats, input_vars, output_vars).to(device)
 
     if world_size > 1:
         model = DDP(model, device_ids=[local_rank], output_device=local_rank)
@@ -240,11 +254,27 @@ def main():
         print(f"Output channels: {out_channels}")
 
     # Loss and optimizer
+    # Per-wind-pair denorm stats (mean,std for u and v) so the GOAL-3
+    # extreme-wind term can threshold on PHYSICAL speed (m/s) despite the
+    # loss running in z-scored space. Harmless when loss_delta=0.
+    _wind_denorm = []
+    for _u_idx, _v_idx in wind_pair_indices:
+        _un, _vn = output_vars[_u_idx], output_vars[_v_idx]
+        _wind_denorm.append((_stats[_un]['mean'], _stats[_un]['std'],
+                             _stats[_vn]['mean'], _stats[_vn]['std']))
+    _delta = float(config.get('loss_delta', 0.0) or 0.0)
+    if is_main and _delta > 0.0:
+        print(f"  GOAL 3 extreme-wind term ON: loss_delta={_delta}, "
+              f"threshold={config.get('loss_extreme_threshold', 10.0)} m/s")
     criterion = CombinedLoss(
         wind_pair_indices=wind_pair_indices,
         alpha=config.get('loss_alpha', 1.0),
         beta=config.get('loss_beta', 0.5),
         gamma=config.get('loss_gamma', 0.3),
+        nonwind_weight=config.get('loss_nonwind_weight', 1.0),
+        delta=config.get('loss_delta', 0.0),
+        extreme_threshold=config.get('loss_extreme_threshold', 10.0),
+        wind_denorm=_wind_denorm,
     )
 
     optimizer = torch.optim.AdamW(

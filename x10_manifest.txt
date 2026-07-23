@@ -1,0 +1,5 @@
+# RN                     BC RES NW  DELTA ADD
+x10_wo_bc24_res_d1_s1     24 1  0.0 1.0   lr_cloud,static_terrain
+x10_wo_bc24_res_d1_s2     24 1  0.0 1.0   lr_cloud,static_terrain
+x10_wo_bc24_res_d4_s1     24 1  0.0 4.0   lr_cloud,static_terrain
+x10_wo_bc24_res_d4_s2     24 1  0.0 4.0   lr_cloud,static_terrain
