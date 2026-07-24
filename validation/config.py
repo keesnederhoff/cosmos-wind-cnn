@@ -64,7 +64,7 @@ PWS_SOURCES = [   # (group, archive NetCDF, anemometer height m)
 # OFF by default: chosen scope is the full IEM+NDBC+CWOP archive. Flip to True
 # to carry these Emeryville-project waterfront moorings (1.2 m anemometers,
 # kept at measured height — compared directly to 10 m model output).
-INCLUDE_USGS_MOORINGS = True
+INCLUDE_USGS_MOORINGS = os.environ.get('VAL_USGS', '0').lower() in ('1', 'true', 'yes')
 USGS_MOORINGS = {
     'WT_MW101': {
         'source': 'whales_tale', 'group': 'USGS',
@@ -303,6 +303,15 @@ MODELS['CNN-extreme'] = {
     'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
 }
 MODEL_COLORS['CNN-extreme'] = 'limegreen'
+
+# RTMA at the CNN's native SF Bay 2.5 km grid (the CNN training target), one file
+# per component like CONUS404 -- distinct from the GEE-grid MODELS['RTMA'].
+MODELS['RTMA-SFbay'] = {
+    'u_file': RTMA_DIR / 'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc',
+    'v_file': RTMA_DIR / 'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc',
+    'u_var': 'eastward_wind', 'v_var': 'northward_wind', 'single_file': False,
+}
+MODEL_COLORS['RTMA-SFbay'] = 'tab:cyan'
 
 # CNN-allvars trained ALL variables -> give it scalar sources so temp/dew/pressure/
 # precip validate against obs. Units verified on disk: hr_air_temp/hr_dew_temp = K,

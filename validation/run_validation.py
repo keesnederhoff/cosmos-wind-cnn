@@ -35,6 +35,9 @@ CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample 
 # ===========================================================================
 
 models, tr, outdir = ERAS[ERA]
+_vm = os.environ.get('VAL_MODELS')
+if _vm:
+    models = [m.strip() for m in _vm.split(',') if m.strip()]
 V.MODELS_TO_RUN     = models
 V.VARIABLES         = VARIABLES
 V.TIME_RANGE        = tr
