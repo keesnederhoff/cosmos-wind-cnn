@@ -17,12 +17,11 @@ ERA = '2'   # '1' 1990-2010 | '2' 2011-2021 | '3' 2022-present
 ONLY_GROUPS = ['USGS']   # None = all stations; else restrict to these obs groups
 
 ERAS = {
-    '1': (['NOW-23', 'Sup3rWind', 'ERA5', 'CONUS404', 'UCLA', 'WRF_CalNev', 'CNN'],
+    '1': (['ERA5', 'AORC', 'CNN', 'CNN-RTMA-20260625'],
           ('1990-01-01', '2011-01-01'), 'era1_1990-2010'),
-    '2': (['NOW-23', 'Sup3rWind', 'RTMA', 'ERA5', 'HRRR', 'CONUS404', 'UCLA',
-           'WRF_CalNev', 'CNN', 'CNN-RTMA-20260625'],
+    '2': (['ERA5', 'RTMA', 'AORC', 'CNN', 'CNN-RTMA-20260625', 'CNN-allvars', 'CNN-windonly'],
           ('2011-01-01', '2022-01-01'), 'era2_2011-2021'),
-    '3': (['RTMA', 'HRRR', 'ERA5', 'CNN', 'CNN-RTMA-20260625', 'NOW-23'],
+    '3': (['ERA5', 'RTMA', 'AORC', 'CNN', 'CNN-RTMA-20260625', 'CNN-allvars', 'CNN-windonly'],
           ('2022-01-01', '2027-01-01'), 'era3_2022-present'),
 }
 

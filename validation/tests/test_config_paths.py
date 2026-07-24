@@ -33,26 +33,17 @@ def test_missing_env_raises(tmp_path, monkeypatch):
 def test_product_paths_anchor_under_data_root(tmp_path):
     cfg = _fresh_config(tmp_path / "data", tmp_path / "out")
     dr = tmp_path / "data"
-    # Cascading anchors:
-    assert cfg.MODELS["ERA5"]["u_file"] == dr / "era5" / "ERA5_eastward_wind_1940_2026_UTM.nc"
-    assert cfg.MODELS["HRRR"]["u_file"].parent == dr / "hrrr"
-    assert cfg.MODELS["CONUS404"]["u_file"].parent == dr / "conus404"
-    assert cfg.MODELS["NOW-23"]["data_dir"] == dr / "now23"
-    assert cfg.MODELS["Sup3rWind"]["data_dir"] == dr / "sup3rwind"
-    assert cfg.MODELS["UCLA"]["data_dir"] == dr / "ucla_reanalysis"
-    assert cfg.MODELS["WRF_CalNev"]["data_dir"] == dr / "wrf_calnev"
-    # Explicit re-anchors:
-    assert cfg.MODELS["RTMA"]["data_dir"] == dr / "rtma"
-    assert cfg.MODELS["CNN"]["u_file"] == dr / "cnn" / "cnn_conus404.nc"
-    assert cfg.MODELS["CNN-RTMA-20260625"]["u_file"] == dr / "cnn" / "cnn_rtma.nc"
-    assert cfg.MODELS["CNN-allvars"]["u_file"] == dr / "cnn" / "cnn_allvars.nc"
-    assert cfg.MODELS["CNN-windonly"]["u_file"] == dr / "cnn" / "cnn_windonly.nc"
-    assert cfg.MODELS["AORC"]["u_file"].parent == dr / "aorc"
-    # Obs / moorings / reference:
-    assert cfg.PWS_DIR == dr / "obs"
+    assert cfg.PWS_DIR == dr / "observed_data"
+    assert cfg.MODELS["ERA5"]["u_file"] == dr / "modeled_data" / "era5" / "ERA5_eastward_wind_1940_2026_UTM.nc"
+    assert cfg.MODELS["RTMA"]["data_dir"] == dr / "modeled_data" / "rtma"
+    assert cfg.MODELS["AORC"]["u_file"].parent == dr / "modeled_data" / "aorc"
+    assert cfg.MODELS["CNN"]["u_file"] == dr / "modeled_data" / "cnn_fullrecord" / "CNN_conus404_full_record_ERA5_19400101_20270101.nc"
+    assert cfg.MODELS["CNN-RTMA-20260625"]["u_file"] == dr / "modeled_data" / "cnn_fullrecord" / "CNN_rtma_full_record_ERA5_19400101_20270101.nc"
+    assert cfg.MODELS["CNN-allvars"]["u_file"] == dr / "modeled_data" / "os_av_bc24_terr_res_s2" / "full_record_ERA5_20110101_20260101.nc"
     assert cfg.LDB_FILE == dr / "reference" / "deltabay.ldb"
-    assert cfg.USGS_MOORINGS["WT_MW101"]["file_path"].parent == dr / "moorings"
-    assert cfg.USGS_MOORINGS["ERO20_GRZ"]["file_path"].parent == dr / "obs"
+    assert cfg.USGS_MOORINGS["ERO20_GRZ"]["file_path"].parent == dr / "observed_data"
+    for dropped in ("HRRR", "CONUS404", "UCLA", "WRF_CalNev", "NOW-23", "Sup3rWind"):
+        assert dropped not in cfg.MODELS
 
 
 def test_no_hardcoded_path_literals_in_source():
