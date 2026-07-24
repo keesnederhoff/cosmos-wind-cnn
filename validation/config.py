@@ -296,6 +296,14 @@ MODELS['CNN-windonly'] = {
 MODEL_COLORS['CNN-allvars']  = 'tab:green'
 MODEL_COLORS['CNN-windonly'] = 'darkgreen'
 
+# Goal-3 extreme-wind model (delta=1 extreme-loss term); wind-only like CNN-windonly.
+MODELS['CNN-extreme'] = {
+    'u_file': CNN_DIR / 'cnn_extreme.nc',
+    'v_file': CNN_DIR / 'cnn_extreme.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODEL_COLORS['CNN-extreme'] = 'limegreen'
+
 # CNN-allvars trained ALL variables -> give it scalar sources so temp/dew/pressure/
 # precip validate against obs. Units verified on disk: hr_air_temp/hr_dew_temp = K,
 # hr_pressure = Pa, hr_rain = mm/hr. NO radiation variable in the file (omitted).

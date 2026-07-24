@@ -68,6 +68,9 @@ MANIFEST = [
     Entry(PROJECT_OLD / "data" / "os_wo_bc24_base_res_s2",
           "full_record_ERA5_20110101_20260101.nc", "cnn",
           rename={"full_record_ERA5_20110101_20260101.nc": "cnn_windonly.nc"}),
+    Entry(PROJECT_OLD / "data" / "x10_wo_bc24_res_d1_s2",
+          "full_record_ERA5_20110101_20260101.nc", "cnn",
+          rename={"full_record_ERA5_20110101_20260101.nc": "cnn_extreme.nc"}),
 ]
 
 

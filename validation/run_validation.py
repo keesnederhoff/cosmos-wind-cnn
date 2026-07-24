@@ -11,23 +11,25 @@ Run:  python run_validation.py
 from pathlib import Path
 import validate_met_models as V
 import config
+import os
 
 # === CONFIGURATION =========================================================
-ERA = '2'   # '1' 1990-2010 | '2' 2011-2021 | '3' 2022-present
-ONLY_GROUPS = ['USGS']   # None = all stations; else restrict to these obs groups
+ERA = os.environ.get('VAL_ERA', '2')   # '1' 1990-2010 | '2' 2011-2021 | '3' 2022-present
+ONLY_GROUPS = None   # None = all stations; else restrict to these obs groups
 
 ERAS = {
     '1': (['NOW-23', 'Sup3rWind', 'ERA5', 'CONUS404', 'UCLA', 'WRF_CalNev', 'CNN'],
           ('1990-01-01', '2011-01-01'), 'era1_1990-2010'),
     '2': (['NOW-23', 'Sup3rWind', 'RTMA', 'ERA5', 'HRRR', 'CONUS404', 'UCLA',
-           'WRF_CalNev', 'CNN', 'CNN-RTMA-20260625'],
+           'WRF_CalNev', 'CNN', 'CNN-RTMA-20260625',
+           'CNN-allvars', 'CNN-windonly', 'CNN-extreme'],
           ('2011-01-01', '2022-01-01'), 'era2_2011-2021'),
-    '3': (['RTMA', 'HRRR', 'ERA5', 'CNN', 'CNN-RTMA-20260625', 'NOW-23'],
+    '3': (['RTMA', 'HRRR', 'ERA5', 'CNN', 'CNN-RTMA-20260625', 'NOW-23',
+           'CNN-allvars', 'CNN-windonly', 'CNN-extreme'],
           ('2022-01-01', '2027-01-01'), 'era3_2022-present'),
 }
 
-VARIABLES         = ['wind', 'temperature', 'pressure', 'dewpoint',
-                     'rh', 'radiation', 'precipitation']
+VARIABLES         = ['wind']   # wind-only validation (user choice 2026-07-23)
 MAKE_SPATIAL_MAPS = False   # slow cartopy peak maps; True for final figures
 CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample if >0)
 # ===========================================================================
