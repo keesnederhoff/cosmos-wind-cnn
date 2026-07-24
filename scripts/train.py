@@ -120,7 +120,10 @@ def main():
                               ('SWEEP_ADD_INPUTS', 'additional_inputs', _env_list),
                               ('SWEEP_NONWIND_WEIGHT', 'loss_nonwind_weight', float),
                               ('SWEEP_EXTREME_WEIGHT', 'loss_delta', float),
-                              ('SWEEP_EXTREME_THRESH', 'loss_extreme_threshold', float)]:
+                              ('SWEEP_EXTREME_THRESH', 'loss_extreme_threshold', float),
+                              ('SWEEP_WAVE_WEIGHT', 'loss_wave_weight', float),
+                              ('SWEEP_WAVE_EXP', 'loss_wave_exp', float),
+                              ('SWEEP_WAVE_SCALE', 'loss_wave_scale', float)]:
         if os.environ.get(_env):
             config[_key] = _cast(os.environ[_env])
     if is_main:
@@ -266,6 +269,11 @@ def main():
     if is_main and _delta > 0.0:
         print(f"  GOAL 3 extreme-wind term ON: loss_delta={_delta}, "
               f"threshold={config.get('loss_extreme_threshold', 10.0)} m/s")
+    _epsilon = float(config.get('loss_wave_weight', 0.0) or 0.0)
+    if is_main and _epsilon > 0.0:
+        print(f"  Wave-energy weighting term ON: loss_wave_weight={_epsilon}, "
+              f"wave_exp={config.get('loss_wave_exp', 2.0)}, "
+              f"wave_scale={config.get('loss_wave_scale', 10.0)} m/s")
     criterion = CombinedLoss(
         wind_pair_indices=wind_pair_indices,
         alpha=config.get('loss_alpha', 1.0),
@@ -275,6 +283,9 @@ def main():
         delta=config.get('loss_delta', 0.0),
         extreme_threshold=config.get('loss_extreme_threshold', 10.0),
         wind_denorm=_wind_denorm,
+        epsilon=config.get('loss_wave_weight', 0.0),
+        wave_exp=config.get('loss_wave_exp', 2.0),
+        wave_scale=config.get('loss_wave_scale', 10.0),
     )
 
     optimizer = torch.optim.AdamW(
