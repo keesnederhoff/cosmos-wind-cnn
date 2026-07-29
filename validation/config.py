@@ -378,3 +378,65 @@ for _name, _yr in [('AORC-pre2018', (1979, 2017)), ('AORC-post2018', (2018, 2025
     }
 MODEL_COLORS['AORC-pre2018']  = 'black'
 MODEL_COLORS['AORC-post2018'] = 'dimgray'
+
+
+# ===========================================================================
+# 2026-07-28: Goal-3b wave-energy winners (2) + bias-corrected wind-only.
+#   CNN-wave-p2     = wv_wo_bc24_res_p2_w10_s1 (wave_exp 2.0, wave_weight 1.0)
+#   CNN-wave-p3     = wv_wo_bc24_res_p3_w10_s2 (wave_exp 3.0, wave_weight 1.0)
+#   CNN-windonly-BC = os_wo_bc24_base_res_s2 quantile-mapped to RTMA (BC_*.nc)
+# All wind-only single-file on the RTMA 2.5 km UTM-10N grid, vars hr_u/hr_v,
+# 2010-12-31T19:00 -> 2025-12-31T23:00 (131501 steps). Mirrors CNN-extreme.
+# ===========================================================================
+MODELS['CNN-wave-p2'] = {
+    'u_file': CNN_DIR/'cnn_wave_p2.nc',
+    'v_file': CNN_DIR/'cnn_wave_p2.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODELS['CNN-wave-p3'] = {
+    'u_file': CNN_DIR/'cnn_wave_p3.nc',
+    'v_file': CNN_DIR/'cnn_wave_p3.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODELS['CNN-windonly-BC'] = {
+    'u_file': CNN_DIR/'cnn_windonly_bc.nc',
+    'v_file': CNN_DIR/'cnn_windonly_bc.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODEL_COLORS['CNN-wave-p2']     = 'seagreen'
+MODEL_COLORS['CNN-wave-p3']     = 'mediumseagreen'
+MODEL_COLORS['CNN-windonly-BC'] = 'darkviolet'
+
+
+# =========================================================================
+# 2026-07-28: bias-corrected twin for EVERY CNN flavor (per-cell quantile
+#   map of CNN speed -> RTMA, fit on the TRAIN period; scripts/bias_correct.py).
+#   Each -BC product is WIND-ONLY by construction: bias_correct writes only
+#   hr_u/hr_v, so CNN-allvars-BC carries no scalar channels (unlike its raw
+#   twin). Colors: raw flavors = greens, bias-corrected twins = purples, so
+#   10 CNN series stay separable in the era plots.
+# =========================================================================
+MODELS['CNN-allvars-BC'] = {
+    'u_file': CNN_DIR/'cnn_allvars_bc.nc',
+    'v_file': CNN_DIR/'cnn_allvars_bc.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODELS['CNN-extreme-BC'] = {
+    'u_file': CNN_DIR/'cnn_extreme_bc.nc',
+    'v_file': CNN_DIR/'cnn_extreme_bc.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODELS['CNN-wave-p2-BC'] = {
+    'u_file': CNN_DIR/'cnn_wave_p2_bc.nc',
+    'v_file': CNN_DIR/'cnn_wave_p2_bc.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODELS['CNN-wave-p3-BC'] = {
+    'u_file': CNN_DIR/'cnn_wave_p3_bc.nc',
+    'v_file': CNN_DIR/'cnn_wave_p3_bc.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+}
+MODEL_COLORS['CNN-allvars-BC'] = 'tab:purple'
+MODEL_COLORS['CNN-extreme-BC'] = 'mediumorchid'
+MODEL_COLORS['CNN-wave-p2-BC'] = 'rebeccapurple'
+MODEL_COLORS['CNN-wave-p3-BC'] = 'plum'

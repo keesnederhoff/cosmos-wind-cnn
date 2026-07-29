@@ -22,6 +22,13 @@ ln -sf "$OBS"/station_inventory.md  "$V"/reference/station_inventory.md
 ln -sf "$RES"/os_av_bc24_terr_res_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_allvars.nc
 ln -sf "$RES"/os_wo_bc24_base_res_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_windonly.nc
 ln -sf "$RES"/x10_wo_bc24_res_d1_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_extreme.nc
+ln -sf "$RES"/wv_wo_bc24_res_p2_w10_s1/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p2.nc
+ln -sf "$RES"/wv_wo_bc24_res_p3_w10_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p3.nc
+ln -sf "$RES"/os_wo_bc24_base_res_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_windonly_bc.nc
+ln -sf "$RES"/os_av_bc24_terr_res_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_allvars_bc.nc
+ln -sf "$RES"/x10_wo_bc24_res_d1_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_extreme_bc.nc
+ln -sf "$RES"/wv_wo_bc24_res_p2_w10_s1/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p2_bc.nc
+ln -sf "$RES"/wv_wo_bc24_res_p3_w10_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p3_bc.nc
 
 # baselines
 ln -sf "$RAW"/ERA5_eastward_wind_1940_2026_UTM.nc  "$V"/era5/ERA5_eastward_wind_1940_2026_UTM.nc

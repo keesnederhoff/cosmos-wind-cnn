@@ -26,10 +26,10 @@ echo "DATA_ROOT=$COSMOS_VALIDATION_DATA_ROOT  OUTPUT_ROOT=$COSMOS_VALIDATION_OUT
 cd /home/cnederhoff/cosmos/cosmos-wind-cnn/validation
 
 echo "================ ERA 2 (2011-2021) ================"
-VAL_ERA=2 VAL_MODELS="ERA5,CONUS404,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme" python run_validation.py
+VAL_ERA=2 VAL_MODELS="ERA5,CONUS404,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme,CNN-wave-p2,CNN-wave-p3,CNN-windonly-BC,CNN-allvars-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC" python run_validation.py
 
 echo "================ ERA 3 (2022-present) ================"
-VAL_ERA=3 VAL_MODELS="ERA5,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme" python run_validation.py
+VAL_ERA=3 VAL_MODELS="ERA5,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme,CNN-wave-p2,CNN-wave-p3,CNN-windonly-BC,CNN-allvars-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC" python run_validation.py
 
 echo "================ ranking / combined skill ================"
 python analysis/rank_products.py   || echo "rank_products failed (non-fatal)"
