@@ -15,7 +15,6 @@ class WindLoss(nn.Module):
     - MAE on wind speed (magnitude)          weight beta
     - Cosine similarity on wind direction    weight gamma
     - Extra speed MAE over EXTREME winds     weight delta   (default off)
-    - Wave-energy-WEIGHTED speed MAE          weight epsilon (default off)
 
     The extreme term ("wind_magnitude_extremes") adds an additional speed
     penalty computed ONLY over pixels where the *true* physical wind speed
@@ -26,20 +25,10 @@ class WindLoss(nn.Module):
     is the normalized-space speed error over that mask, keeping delta on the same
     scale as beta. With delta=0 (default) the block is skipped and the loss is
     bit-for-bit identical to the original three-term loss.
-
-    The wave term ("wave_magnitude_weighting") is the SMOOTH version of the
-    extreme term: instead of a hard on/off mask at ``extreme_threshold``, it
-    weights every pixel's speed error by ``(true_physical_speed / wave_scale) **
-    wave_exp``. Wave generation scales strongly with wind speed (stress ~ U^2,
-    energy input ~ U^3), so wave_exp=2..3 emphasises the wave-making winds
-    continuously while keeping moderate winds trained (no cliff). It reuses the
-    same ``denorm`` stats as the extreme term. With epsilon=0 (default) the block
-    is skipped and the loss is unchanged.
     """
 
     def __init__(self, alpha=1.0, beta=0.5, gamma=0.3, delta=0.0,
-                 extreme_threshold=10.0, epsilon=0.0, wave_exp=2.0,
-                 wave_scale=10.0):
+                 extreme_threshold=10.0):
         """
         Args:
             alpha: Weight for component MSE loss
@@ -48,11 +37,6 @@ class WindLoss(nn.Module):
             delta: Weight for the extreme-wind speed MAE term (0.0 = disabled)
             extreme_threshold: physical wind speed (m/s) above which a pixel is
                 "extreme" for the delta term
-            epsilon: Weight for the smooth wave-energy-weighted speed MAE term
-                (0.0 = disabled)
-            wave_exp: exponent p in the pixel weight (U/wave_scale)**p for the
-                epsilon term (2=stress-like, 3=energy-like)
-            wave_scale: reference speed U0 (m/s) normalising the wave weight
         """
         super().__init__()
         self.alpha = alpha
@@ -60,17 +44,13 @@ class WindLoss(nn.Module):
         self.gamma = gamma
         self.delta = float(delta)
         self.extreme_threshold = float(extreme_threshold)
-        self.epsilon = float(epsilon)
-        self.wave_exp = float(wave_exp)
-        self.wave_scale = float(wave_scale)
 
     def forward(self, pred, target, denorm=None):
         """
         Args:
             pred:   (batch, 2, H, W) - predicted [u, v] (normalized)
             target: (batch, 2, H, W) - target [u, v] (normalized)
-            denorm: optional (u_mean, u_std, v_mean, v_std) for the extreme/wave
-                    terms
+            denorm: optional (u_mean, u_std, v_mean, v_std) for the extreme term
 
         Returns:
             total_loss: Combined loss value
@@ -102,19 +82,14 @@ class WindLoss(nn.Module):
             'direction_loss': direction_loss.item()
         }
 
-        # Physical target speed is needed by both the extreme (delta) and wave
-        # (epsilon) terms; compute once, only when a term is active.
-        target_speed_phys = None
-        if (self.delta > 0.0 or self.epsilon > 0.0) and denorm is not None:
+        # 4. wind_magnitude_extremes (default OFF: delta=0 -> skipped entirely,
+        #    so the loss above is unchanged). Extra speed MAE over pixels where
+        #    the TRUE physical wind exceeds extreme_threshold m/s.
+        if self.delta > 0.0 and denorm is not None:
             u_mean, u_std, v_mean, v_std = denorm
             tu = target[:, 0] * u_std + u_mean
             tv = target[:, 1] * v_std + v_mean
             target_speed_phys = torch.sqrt(tu**2 + tv**2 + 1e-8)
-
-        # 4. wind_magnitude_extremes (default OFF: delta=0 -> skipped entirely,
-        #    so the loss above is unchanged). Extra speed MAE over pixels where
-        #    the TRUE physical wind exceeds extreme_threshold m/s.
-        if self.delta > 0.0 and target_speed_phys is not None:
             ext_mask = target_speed_phys > self.extreme_threshold  # (batch,H,W)
             if ext_mask.any():
                 extreme_loss = F.l1_loss(pred_speed[ext_mask],
@@ -127,19 +102,6 @@ class WindLoss(nn.Module):
             loss_dict['extreme_loss'] = float(extreme_loss.item())
             loss_dict['extreme_frac'] = float(ext_mask.float().mean().item())
 
-        # 5. wave_magnitude_weighting (default OFF: epsilon=0 -> skipped). Smooth
-        #    wave-energy weighting of the speed error: each pixel's |pred-target|
-        #    speed error (normalized space) is weighted by
-        #    (true_physical_speed / wave_scale)**wave_exp, then normalised by the
-        #    total weight so epsilon stays on the same scale as beta.
-        if self.epsilon > 0.0 and target_speed_phys is not None:
-            w = (target_speed_phys / self.wave_scale) ** self.wave_exp
-            speed_err = torch.abs(pred_speed - target_speed)
-            wave_loss = (w * speed_err).sum() / (w.sum() + 1e-8)
-            total_loss = total_loss + self.epsilon * wave_loss
-            loss_dict['wave_loss'] = float(wave_loss.item())
-            loss_dict['wave_mean_weight'] = float(w.mean().item())
-
         return total_loss, loss_dict
 
 
@@ -147,7 +109,7 @@ class CombinedLoss(nn.Module):
     """
     Combined loss for multiple variable types:
     - Wind pairs (u, v) use WindLoss (u/v MSE + speed MAE + direction cosine
-      + optional extreme-wind speed MAE + optional wave-energy weighting)
+      + optional extreme-wind speed MAE)
     - Other variables (temperature, etc.) use MSE
 
     `nonwind_weight` selects the OPTIMIZATION GOAL:
@@ -171,11 +133,6 @@ class CombinedLoss(nn.Module):
     `wind_pair_indices`, each entry `(u_mean, u_std, v_mean, v_std)` for the pair
     (needed because the physical threshold is applied to z-scored u/v).
 
-    `epsilon` / `wave_exp` / `wave_scale` add the optional SMOOTH
-    "wave_magnitude_weighting" term: a wave-energy-weighted speed penalty (no
-    hard threshold) that also uses `wind_denorm`. `epsilon=0` (default) is a
-    no-op.
-
     Why nonwind_weight matters: val_loss was measured to be ANTI-correlated with
     wind skill across model sizes precisely because the aggregate lets a model
     win on temperature/pressure while losing on wind. Setting nonwind_weight=0
@@ -184,7 +141,7 @@ class CombinedLoss(nn.Module):
 
     def __init__(self, wind_pair_indices=None, alpha=1.0, beta=0.5, gamma=0.3,
                  nonwind_weight=1.0, delta=0.0, extreme_threshold=10.0,
-                 wind_denorm=None, epsilon=0.0, wave_exp=2.0, wave_scale=10.0):
+                 wind_denorm=None):
         """
         Args:
             wind_pair_indices: List of tuples [(u_idx, v_idx), ...] indicating which
@@ -196,24 +153,16 @@ class CombinedLoss(nn.Module):
             delta: Weight for the extreme-wind term (0.0 = disabled, default).
             extreme_threshold: physical wind speed (m/s) defining "extreme".
             wind_denorm: list aligned with wind_pair_indices of
-                (u_mean, u_std, v_mean, v_std) tuples; required for the delta and
-                epsilon terms.
-            epsilon: Weight for the smooth wave-energy-weighted speed term
-                (0.0 = disabled, default).
-            wave_exp: exponent p in the wave pixel weight (U/wave_scale)**p.
-            wave_scale: reference speed U0 (m/s) for the wave weight.
+                (u_mean, u_std, v_mean, v_std) tuples; required for the delta term.
         """
         super().__init__()
         self.wind_pair_indices = wind_pair_indices or []
         self.wind_loss = WindLoss(alpha, beta, gamma, delta=delta,
-                                  extreme_threshold=extreme_threshold,
-                                  epsilon=epsilon, wave_exp=wave_exp,
-                                  wave_scale=wave_scale)
+                                  extreme_threshold=extreme_threshold)
         self.mse_loss = nn.MSELoss()
         self.nonwind_weight = float(nonwind_weight)
-        # Per-pair denorm stats for the extreme/wave weighting; None disables
-        # both terms even if delta/epsilon>0 (the WindLoss blocks are gated on
-        # `denorm is not None`).
+        # Per-pair denorm stats for the extreme mask; None disables the term even
+        # if delta>0 (the WindLoss block is gated on `denorm is not None`).
         self.wind_denorm = wind_denorm
 
         # Track which output channels are part of wind pairs

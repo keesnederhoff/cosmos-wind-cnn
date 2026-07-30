@@ -442,23 +442,6 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
         else:
             rmse_mod_ext = rmse_e5_ext = ss_ext = np.nan
 
-        # Energy-weighted skill: weight the speed error by (true_ws)**q so
-        # wave-making winds (stress ~ U^2, energy ~ U^3) dominate the score
-        # smoothly, instead of the hard >10 m/s cliff above.
-        _tw = tru_ws[mask]
-        _me = (mod_ws[mask] - _tw) ** 2
-        _ee = (e5_ws[mask] - _tw) ** 2
-        ss_ew = {}
-        for _q in (2, 3):
-            _w = _tw ** _q
-            _wsum = _w.sum()
-            if _wsum > 0:
-                _wr_mod = np.sqrt((_w * _me).sum() / _wsum)
-                _wr_e5 = np.sqrt((_w * _ee).sum() / _wsum)
-                ss_ew[_q] = float(1.0 - _wr_mod / _wr_e5) if _wr_e5 > 0 else np.nan
-            else:
-                ss_ew[_q] = np.nan
-
         rmse_mod_u = float(np.sqrt(np.nanmean((mod_u[mask] - tru_u[mask])**2)))
         rmse_e5_u = float(np.sqrt(np.nanmean((e5_u[mask] - tru_u[mask])**2)))
         rmse_mod_v = float(np.sqrt(np.nanmean((mod_v[mask] - tru_v[mask])**2)))
@@ -472,7 +455,6 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'rmse_model_v': rmse_mod_v, 'rmse_lr_v': rmse_e5_v,
             'rmse_model_ws_ext': rmse_mod_ext, 'rmse_lr_ws_ext': rmse_e5_ext,
             'skill_score_ws_ext': ss_ext, 'n_ext': n_ext,
-            'skill_score_ws_ew_q2': ss_ew[2], 'skill_score_ws_ew_q3': ss_ew[3],
         })
         running_ss.append(ss)
 
@@ -507,12 +489,6 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'n_points_with_extremes': int((df['n_ext'] >= 10).sum()),
             'mean_extreme_hours_per_point': float(df['n_ext'].mean()),
         },
-        'wind_speed_energy_weighted': {
-            'q2_median_skill_score': float(np.nanmedian(df['skill_score_ws_ew_q2'])),
-            'q2_mean_skill_score': float(np.nanmean(df['skill_score_ws_ew_q2'])),
-            'q3_median_skill_score': float(np.nanmedian(df['skill_score_ws_ew_q3'])),
-            'q3_mean_skill_score': float(np.nanmean(df['skill_score_ws_ew_q3'])),
-        },
     }
     with open(output_dir / 'grid_point_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
@@ -527,9 +503,6 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     _rl_ext = float(np.nanmean(df['rmse_lr_ws_ext']))
     print(f"      [>10 m/s] skill (median): {_ss_ext:.3f}  "
           f"RMSE model {_rm_ext:.3f} / LR {_rl_ext:.3f} m/s")
-    _ew2 = float(np.nanmedian(df['skill_score_ws_ew_q2']))
-    _ew3 = float(np.nanmedian(df['skill_score_ws_ew_q3']))
-    print(f"      [energy-wt] skill (median): U^2 {_ew2:.3f}  U^3 {_ew3:.3f}")
     print(f"    Saved to: {output_dir}")
 
     # Close datasets

@@ -98,16 +98,6 @@ loss_nonwind_weight: 1.0
 loss_delta: 0.0
 loss_extreme_threshold: 10.0
 
-# Smooth wave-energy weighting: weight each pixel's speed error by
-# (true_speed / loss_wave_scale) ** loss_wave_exp so wave-making winds
-# (stress ~ U^2, energy ~ U^3) are emphasised without a hard cliff.
-# 0.0 = OFF (default, loss bit-identical). Override per run with
-# SWEEP_WAVE_WEIGHT / SWEEP_WAVE_EXP / SWEEP_WAVE_SCALE. Smooth
-# alternative to loss_delta.
-loss_wave_weight: 0.0
-loss_wave_exp: 2.0
-loss_wave_scale: 10.0
-
 # Learning Rate Scheduler
 scheduler_patience: 5
 scheduler_factor: 0.5

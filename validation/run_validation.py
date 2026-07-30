@@ -14,19 +14,19 @@ import config
 import os
 
 # === CONFIGURATION =========================================================
+# Every knob below is overridable from the environment so the same file drives
+# an interactive Windows run and the Caldera slurm harness without being edited.
 ERA = os.environ.get('VAL_ERA', '2')   # '1' 1990-2010 | '2' 2011-2021 | '3' 2022-present
                                        # 'A' 2011-2019 | 'B' 2020-2025  (2020 split; USGS moorings all land in B)
-ONLY_GROUPS = None   # None = all stations; else restrict to these obs groups
+# None = all stations; else restrict to these obs groups, e.g. VAL_ONLY_GROUPS=USGS
+ONLY_GROUPS = [g.strip() for g in os.environ.get('VAL_ONLY_GROUPS', '').split(',') if g.strip()] or None
 
 ERAS = {
-    '1': (['NOW-23', 'Sup3rWind', 'ERA5', 'CONUS404', 'UCLA', 'WRF_CalNev', 'CNN'],
+    '1': (['ERA5', 'AORC', 'CNN', 'CNN-RTMA-20260625'],
           ('1990-01-01', '2011-01-01'), 'era1_1990-2010'),
-    '2': (['NOW-23', 'Sup3rWind', 'RTMA', 'ERA5', 'HRRR', 'CONUS404', 'UCLA',
-           'WRF_CalNev', 'CNN', 'CNN-RTMA-20260625',
-           'CNN-allvars', 'CNN-windonly', 'CNN-extreme'],
+    '2': (['ERA5', 'RTMA', 'AORC', 'CNN', 'CNN-RTMA-20260625', 'CNN-allvars', 'CNN-windonly'],
           ('2011-01-01', '2022-01-01'), 'era2_2011-2021'),
-    '3': (['RTMA', 'HRRR', 'ERA5', 'CNN', 'CNN-RTMA-20260625', 'NOW-23',
-           'CNN-allvars', 'CNN-windonly', 'CNN-extreme'],
+    '3': (['ERA5', 'RTMA', 'AORC', 'CNN', 'CNN-RTMA-20260625', 'CNN-allvars', 'CNN-windonly'],
           ('2022-01-01', '2027-01-01'), 'era3_2022-present'),
     # ---- 2020 split (2026-07-30). All four USGS moorings start after
     # 2020-01-22, so era B carries every USGS record. Product set is the five
@@ -40,7 +40,9 @@ ERAS = {
           ('2020-01-01', '2026-01-01'), 'eraB_2020-2025'),
 }
 
-VARIABLES         = ['wind']   # wind-only validation (user choice 2026-07-23)
+# VAL_VARIABLES=wind,temperature,... ; default wind-only -- the scalar ERA5/CONUS404
+# sources are not staged in the Caldera bundle, so asking for them there fails.
+VARIABLES         = [v.strip() for v in os.environ.get('VAL_VARIABLES', 'wind').split(',') if v.strip()]
 MAKE_SPATIAL_MAPS = False   # slow cartopy peak maps; True for final figures
 CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample if >0)
 # ===========================================================================

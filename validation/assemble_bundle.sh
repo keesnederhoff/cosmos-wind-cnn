@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Assemble the SF Bay validation bundle on Caldera via symlinks (no copies).
+# Layout mirrors config.py: observed_data/, reference/, modeled_data/{cnn_fullrecord,era5,conus404,rtma}/
 set -euo pipefail
 B=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
 V=$B/validation
@@ -7,42 +8,56 @@ OBS=$B/sf_bay_observed_data
 RES=$B/sf_bay_rtma/results
 RAW=$B/sf_bay_rtma/raw_data
 C404=$B/sf_bay_conus404/raw_data
+M=$V/modeled_data
 
-mkdir -p "$V"/obs "$V"/moorings "$V"/reference "$V"/cnn "$V"/era5 "$V"/conus404 "$V"/rtma "$V"/results
+mkdir -p "$V"/observed_data "$V"/reference "$M"/cnn_fullrecord "$M"/era5 "$M"/conus404 "$M"/rtma "$V"/results
 
-# obs + reference (explicit destination filenames -- some coreutils reject `ln -sf src dir/`)
-ln -sf "$OBS"/pws_sfbay_waterfront_iem.nc        "$V"/obs/pws_sfbay_waterfront_iem.nc
-ln -sf "$OBS"/pws_sfbay_waterfront_ndbc.nc       "$V"/obs/pws_sfbay_waterfront_ndbc.nc
-ln -sf "$OBS"/pws_sfbay_waterfront_cwop_madis.nc "$V"/obs/pws_sfbay_waterfront_cwop_madis.nc
-ln -sf "$OBS"/ERO20_GrizzlyBay_meteorological.nc "$V"/obs/ERO20_GrizzlyBay_meteorological.nc
-# USGS moorings (config.MOORINGS_DIR = DATA_ROOT/"moorings"). ERO20 is read from
-# PWS_DIR and already linked under obs/ above; these three are Whales Tale / EMC.
-ln -sf "$OBS"/DMP23MW101met.nc "$V"/moorings/DMP23MW101met.nc
-ln -sf "$OBS"/DMP23MW201met.nc "$V"/moorings/DMP23MW201met.nc
-ln -sf "$OBS"/EMC26MW101met.nc "$V"/moorings/EMC26MW101met.nc
-
+# observations (explicit destination filenames -- some coreutils reject `ln -sf src dir/`)
+for f in pws_sfbay_waterfront_iem.nc pws_sfbay_waterfront_ndbc.nc \
+         pws_sfbay_waterfront_cwop_madis.nc ERO20_GrizzlyBay_meteorological.nc \
+         DMP23MW101met.nc DMP23MW201met.nc EMC26MW101met.nc; do
+  ln -sf "$OBS/$f" "$V/observed_data/$f"
+done
 ln -sf "$OBS"/station_inventory.csv "$V"/reference/station_inventory.csv
 ln -sf "$OBS"/station_inventory.md  "$V"/reference/station_inventory.md
 
-# CNN winners (rename to the config's expected bundle names)
-ln -sf "$RES"/os_av_bc24_terr_res_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_allvars.nc
-ln -sf "$RES"/os_wo_bc24_base_res_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_windonly.nc
-ln -sf "$RES"/x10_wo_bc24_res_d1_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_extreme.nc
-ln -sf "$RES"/wv_wo_bc24_res_p2_w10_s1/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p2.nc
-ln -sf "$RES"/wv_wo_bc24_res_p3_w10_s2/output_inference/full_record_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p3.nc
-ln -sf "$RES"/os_wo_bc24_base_res_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_windonly_bc.nc
-ln -sf "$RES"/os_av_bc24_terr_res_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_allvars_bc.nc
-ln -sf "$RES"/x10_wo_bc24_res_d1_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_extreme_bc.nc
-ln -sf "$RES"/wv_wo_bc24_res_p2_w10_s1/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p2_bc.nc
-ln -sf "$RES"/wv_wo_bc24_res_p3_w10_s2/output_inference/BC_ERA5_20110101_20260101.nc "$V"/cnn/cnn_wave_p3_bc.nc
+# CNN products (bundle names the config expects)
+link_cnn () { ln -sf "$RES/$1/output_inference/$2" "$M/cnn_fullrecord/$3"; }
+link_cnn os_av_bc24_terr_res_s2   full_record_ERA5_20110101_20260101.nc cnn_allvars.nc
+link_cnn os_wo_bc24_base_res_s2   full_record_ERA5_20110101_20260101.nc cnn_windonly.nc
+link_cnn x10_wo_bc24_res_d1_s2    full_record_ERA5_20110101_20260101.nc cnn_extreme.nc
+link_cnn wv_wo_bc24_res_p2_w10_s1 full_record_ERA5_20110101_20260101.nc cnn_wave_p2.nc
+link_cnn wv_wo_bc24_res_p3_w10_s2 full_record_ERA5_20110101_20260101.nc cnn_wave_p3.nc
+link_cnn os_av_bc24_terr_res_s2   BC_ERA5_20110101_20260101.nc cnn_allvars_bc.nc
+link_cnn os_wo_bc24_base_res_s2   BC_ERA5_20110101_20260101.nc cnn_windonly_bc.nc
+link_cnn x10_wo_bc24_res_d1_s2    BC_ERA5_20110101_20260101.nc cnn_extreme_bc.nc
+link_cnn wv_wo_bc24_res_p2_w10_s1 BC_ERA5_20110101_20260101.nc cnn_wave_p2_bc.nc
+link_cnn wv_wo_bc24_res_p3_w10_s2 BC_ERA5_20110101_20260101.nc cnn_wave_p3_bc.nc
+
+# Upstream config points CNN-allvars / CNN-windonly at per-run dirs under
+# modeled_data/<run>/ (and reads CNN-allvars' scalar channels from the same file),
+# so mirror that layout as well as the cnn_fullrecord/ bundle names.
+for r in os_av_bc24_terr_res_s2 os_wo_bc24_base_res_s2; do
+  mkdir -p "$M/$r"
+  ln -sf "$RES/$r/output_inference/full_record_ERA5_20110101_20260101.nc" \
+         "$M/$r/full_record_ERA5_20110101_20260101.nc"
+done
 
 # baselines
-ln -sf "$RAW"/ERA5_eastward_wind_1940_2026_UTM.nc  "$V"/era5/ERA5_eastward_wind_1940_2026_UTM.nc
-ln -sf "$RAW"/ERA5_northward_wind_1940_2026_UTM.nc "$V"/era5/ERA5_northward_wind_1940_2026_UTM.nc
-ln -sf "$C404"/CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc  "$V"/conus404/CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc
-ln -sf "$C404"/CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc "$V"/conus404/CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc
-ln -sf "$RAW"/RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc  "$V"/rtma/RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc
-ln -sf "$RAW"/RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc "$V"/rtma/RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc
+for f in ERA5_eastward_wind_1940_2026_UTM.nc ERA5_northward_wind_1940_2026_UTM.nc; do
+  ln -sf "$RAW/$f" "$M/era5/$f"
+done
+for f in CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc \
+         CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc; do
+  ln -sf "$C404/$f" "$M/conus404/$f"
+done
+for f in RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc \
+         RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc; do
+  ln -sf "$RAW/$f" "$M/rtma/$f"
+done
 
 echo "=== bundle assembled at $V ==="
-for d in obs moorings reference cnn era5 conus404 rtma; do echo "-- $d --"; ls -l "$V"/$d; done
+for d in observed_data reference modeled_data/cnn_fullrecord modeled_data/era5 \
+         modeled_data/conus404 modeled_data/rtma; do
+  echo "-- $d --"; ls -l "$V/$d"
+done
