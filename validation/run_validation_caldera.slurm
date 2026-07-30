@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# SF Bay met-product validation on Caldera (wind-only): ERA5, CONUS404, RTMA-SFbay,
-# and the 3 CNN winners vs IEM+NDBC(+CWOP) obs. Runs Era 2 then Era 3.
+# SF Bay met-product validation on Caldera (wind-only). 2020 era split:
+#   Era A 2011-2019  IEM+NDBC              9 products (incl. CONUS404)
+#   Era B 2020-2025  IEM+NDBC+USGS(4)      8 products (CONUS404 record ends 2021)
+# Products = the 5 bias-corrected CNN twins + CNN-allvars raw (raw/BC control pair)
+# + ERA5 / RTMA-SFbay baselines. USGS moorings stay at MEASURED anemometer height
+# (1.2 m / 4.93 m vs 10 m model) -- models read high there by construction, so USGS
+# is reported as its own group and kept OUT of the headline pooled score.
 #   sbatch run_validation_caldera.slurm
 #SBATCH --job-name=val_met
 #SBATCH --partition=cpu
@@ -25,13 +30,25 @@ echo "DATA_ROOT=$COSMOS_VALIDATION_DATA_ROOT  OUTPUT_ROOT=$COSMOS_VALIDATION_OUT
 
 cd /home/cnederhoff/cosmos/cosmos-wind-cnn/validation
 
-echo "================ ERA 2 (2011-2021) ================"
-VAL_ERA=2 VAL_MODELS="ERA5,CONUS404,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme,CNN-wave-p2,CNN-wave-p3,CNN-windonly-BC,CNN-allvars-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC" python run_validation.py
+MODELS_A="ERA5,CONUS404,RTMA-SFbay,CNN-allvars,CNN-allvars-BC,CNN-windonly-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC"
+MODELS_B="ERA5,RTMA-SFbay,CNN-allvars,CNN-allvars-BC,CNN-windonly-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC"
 
-echo "================ ERA 3 (2022-present) ================"
-VAL_ERA=3 VAL_MODELS="ERA5,RTMA-SFbay,CNN-allvars,CNN-windonly,CNN-extreme,CNN-wave-p2,CNN-wave-p3,CNN-windonly-BC,CNN-allvars-BC,CNN-extreme-BC,CNN-wave-p2-BC,CNN-wave-p3-BC" python run_validation.py
+echo "================ ERA A (2011-2019, IEM+NDBC) ================"
+VAL_ERA=A VAL_MODELS="$MODELS_A" python run_validation.py
+
+echo "================ ERA B (2020-2025, IEM+NDBC+USGS) ================"
+VAL_ERA=B VAL_USGS=1 VAL_MODELS="$MODELS_B" python run_validation.py
 
 echo "================ ranking / combined skill ================"
-python analysis/rank_products.py   || echo "rank_products failed (non-fatal)"
-python analysis/combined_skill.py  || echo "combined_skill failed (non-fatal)"
+python analysis/rank_products.py || echo "rank_products failed (non-fatal)"
+
+# Headline: IEM+NDBC only -- USGS excluded so the pooled number is not distorted
+# by 4 short records measured at 1.2 m.
+VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings \
+    python analysis/combined_skill.py || echo "combined_skill (headline) failed (non-fatal)"
+
+# Second pass with USGS folded in at equal weight, for comparison only.
+VAL_WEIGHTS="IEM:1,NDBC:1,USGS:1" VAL_RANK_DIR=rankings_withUSGS \
+    python analysis/combined_skill.py || echo "combined_skill (withUSGS) failed (non-fatal)"
+
 echo "================ validation done ================"

@@ -12,6 +12,8 @@ ERAS = {
     'Era 1  1990-2010': 'era1_1990-2010',
     'Era 2  2011-2021': 'era2_2011-2021',
     'Era 3  2022-present': 'era3_2022-present',
+    'Era A  2011-2019': 'eraA_2011-2019',
+    'Era B  2020-2025': 'eraB_2020-2025',
 }
 VAR = 'Wind Speed [m/s]'
 

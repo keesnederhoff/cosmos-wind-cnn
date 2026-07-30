@@ -8,13 +8,19 @@ RES=$B/sf_bay_rtma/results
 RAW=$B/sf_bay_rtma/raw_data
 C404=$B/sf_bay_conus404/raw_data
 
-mkdir -p "$V"/obs "$V"/reference "$V"/cnn "$V"/era5 "$V"/conus404 "$V"/rtma "$V"/results
+mkdir -p "$V"/obs "$V"/moorings "$V"/reference "$V"/cnn "$V"/era5 "$V"/conus404 "$V"/rtma "$V"/results
 
 # obs + reference (explicit destination filenames -- some coreutils reject `ln -sf src dir/`)
 ln -sf "$OBS"/pws_sfbay_waterfront_iem.nc        "$V"/obs/pws_sfbay_waterfront_iem.nc
 ln -sf "$OBS"/pws_sfbay_waterfront_ndbc.nc       "$V"/obs/pws_sfbay_waterfront_ndbc.nc
 ln -sf "$OBS"/pws_sfbay_waterfront_cwop_madis.nc "$V"/obs/pws_sfbay_waterfront_cwop_madis.nc
 ln -sf "$OBS"/ERO20_GrizzlyBay_meteorological.nc "$V"/obs/ERO20_GrizzlyBay_meteorological.nc
+# USGS moorings (config.MOORINGS_DIR = DATA_ROOT/"moorings"). ERO20 is read from
+# PWS_DIR and already linked under obs/ above; these three are Whales Tale / EMC.
+ln -sf "$OBS"/DMP23MW101met.nc "$V"/moorings/DMP23MW101met.nc
+ln -sf "$OBS"/DMP23MW201met.nc "$V"/moorings/DMP23MW201met.nc
+ln -sf "$OBS"/EMC26MW101met.nc "$V"/moorings/EMC26MW101met.nc
+
 ln -sf "$OBS"/station_inventory.csv "$V"/reference/station_inventory.csv
 ln -sf "$OBS"/station_inventory.md  "$V"/reference/station_inventory.md
 
@@ -39,4 +45,4 @@ ln -sf "$RAW"/RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc  "$V"/rtma/RTMA_
 ln -sf "$RAW"/RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc "$V"/rtma/RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc
 
 echo "=== bundle assembled at $V ==="
-for d in obs reference cnn era5 conus404 rtma; do echo "-- $d --"; ls -l "$V"/$d; done
+for d in obs moorings reference cnn era5 conus404 rtma; do echo "-- $d --"; ls -l "$V"/$d; done

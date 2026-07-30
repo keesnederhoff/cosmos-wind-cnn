@@ -15,6 +15,7 @@ import os
 
 # === CONFIGURATION =========================================================
 ERA = os.environ.get('VAL_ERA', '2')   # '1' 1990-2010 | '2' 2011-2021 | '3' 2022-present
+                                       # 'A' 2011-2019 | 'B' 2020-2025  (2020 split; USGS moorings all land in B)
 ONLY_GROUPS = None   # None = all stations; else restrict to these obs groups
 
 ERAS = {
@@ -27,6 +28,16 @@ ERAS = {
     '3': (['RTMA', 'HRRR', 'ERA5', 'CNN', 'CNN-RTMA-20260625', 'NOW-23',
            'CNN-allvars', 'CNN-windonly', 'CNN-extreme'],
           ('2022-01-01', '2027-01-01'), 'era3_2022-present'),
+    # ---- 2020 split (2026-07-30). All four USGS moorings start after
+    # 2020-01-22, so era B carries every USGS record. Product set is the five
+    # bias-corrected CNN twins + CNN-allvars raw as the one raw/BC control pair.
+    'A': (['ERA5', 'CONUS404', 'RTMA-SFbay', 'CNN-allvars', 'CNN-allvars-BC',
+           'CNN-windonly-BC', 'CNN-extreme-BC', 'CNN-wave-p2-BC', 'CNN-wave-p3-BC'],
+          ('2011-01-01', '2020-01-01'), 'eraA_2011-2019'),
+    # CONUS404 ends 2021 -> excluded from B rather than scored on a partial window.
+    'B': (['ERA5', 'RTMA-SFbay', 'CNN-allvars', 'CNN-allvars-BC',
+           'CNN-windonly-BC', 'CNN-extreme-BC', 'CNN-wave-p2-BC', 'CNN-wave-p3-BC'],
+          ('2020-01-01', '2026-01-01'), 'eraB_2020-2025'),
 }
 
 VARIABLES         = ['wind']   # wind-only validation (user choice 2026-07-23)

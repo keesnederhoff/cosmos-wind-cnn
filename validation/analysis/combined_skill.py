@@ -19,6 +19,7 @@ Variables:
 Reads the existing per-era validation_statistics.csv -- no model re-extraction.
 """
 from pathlib import Path
+import os
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -31,15 +32,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # project root on
 import config
 
 # === CONFIGURATION =========================================================
-WEIGHTS = {'USGS': 2.0, 'NDBC': 1.0, 'IEM': 1.0, 'CWOP': 0.5}  # category weights
+# Category weights, overridable from the environment:
+#     VAL_WEIGHTS="IEM:1,NDBC:1"      -> pool IEM+NDBC only (USGS reported separately)
+#     VAL_WEIGHTS="IEM:1,NDBC:1,USGS:1"
+# A category absent from WEIGHTS is dropped from the pooled score entirely.
+# NOTE the default up-weights USGS to 2.0 -- fine when USGS forces the Bay model
+# directly, wrong when USGS is meant to be a separate side-by-side group.
+_DEFAULT_WEIGHTS = {'USGS': 2.0, 'NDBC': 1.0, 'IEM': 1.0, 'CWOP': 0.5}
+_wenv = os.environ.get('VAL_WEIGHTS', '').strip()
+WEIGHTS = ({kv.split(':')[0].strip(): float(kv.split(':')[1])
+            for kv in _wenv.split(',') if ':' in kv} if _wenv else dict(_DEFAULT_WEIGHTS))
+# Output subdirectory for the rankings CSV (so a second pass can write elsewhere).
+RANK_DIR = os.environ.get('VAL_RANK_DIR', 'rankings')
 BASE = config.OUTPUT_ROOT
 ERA_DIRS = {
     'Era 1  1990-2010': 'era1_1990-2010',
     'Era 2  2011-2021': 'era2_2011-2021',
     'Era 3  2022-present': 'era3_2022-present',
+    'Era A  2011-2019': 'eraA_2011-2019',
+    'Era B  2020-2025': 'eraB_2020-2025',
 }
 # Murphy-skill variables (have a defined observed variance) and their file keys.
 SKILL_VARS = [('Wind Speed [m/s]', 'speed'),
+              # Top decile: Murphy skill is almost always negative here (the
+              # conditional obs variance is tiny), so read the RMSE column.
+              ('Wind Speed [m/s] (top 10%)', 'speed_top10'),
               ('Wind U10 [m/s]', 'u10'),
               ('Wind V10 [m/s]', 'v10'),
               ('Air Temperature [C]', 'temp'),
@@ -71,6 +88,22 @@ def model_color_map(models):
 
 
 # ---- Murphy-skill variables (speed / u10 / v10) ---------------------------
+def _nw_mean(vals, n):
+    """Sample-size-weighted mean that ignores non-finite entries."""
+    v = np.asarray(vals, dtype=float)
+    m = np.isfinite(v)
+    return float(np.sum(n[m] * v[m]) / n[m].sum()) if m.any() and n[m].sum() > 0 else np.nan
+
+
+def _catavg(cats, w, key):
+    """Weighted average across categories, skipping categories whose value is NaN."""
+    ks = [c for c in cats if np.isfinite(cats[c][key])]
+    if not ks:
+        return np.nan
+    tot = sum(w[c] for c in ks)
+    return sum(w[c] * cats[c][key] for c in ks) / tot if tot > 0 else np.nan
+
+
 def _cat_stats(g):
     n = g['n'].values.astype(float); W = n.sum()
     mse = np.sum(n * g['rmse'].values ** 2) / W
@@ -79,7 +112,13 @@ def _cat_stats(g):
     bias = np.sum(n * g['bias'].values) / W
     rz = np.sum(n * np.arctanh(np.clip(g['corr'].values, -0.999, 0.999))) / W
     stdr = np.sum(n * (g['model_std'].values / g['obs_std'].values)) / W
-    return dict(mse=mse, cmse=cmse, var=var, bias=bias, rz=rz, stdr=stdr,
+    # Energy-weighted Murphy skills (obs**q weighting; q=2 stress, q=3 energy).
+    # These mirror the wave_exp p2/p3 training loss. They are NOT poolable the way
+    # MSE/variance are -- the weighted sums are not recoverable from rmse/bias --
+    # so carry the sample-size-weighted station MEAN and label it as such.
+    ew = _nw_mean(g['skill_ew'].values, n) if 'skill_ew' in g else np.nan
+    ew3 = _nw_mean(g['skill_ew_u3'].values, n) if 'skill_ew_u3' in g else np.nan
+    return dict(mse=mse, cmse=cmse, var=var, bias=bias, rz=rz, stdr=stdr, ew=ew, ew3=ew3,
                 skill_c=(1.0 - mse / var if var > 0 else np.nan), n_sta=len(g))
 
 
@@ -99,6 +138,8 @@ def combine_skill(df_m):
         bias=sum(w[c] * cats[c]['bias'] for c in cats) / Wt,
         corr=np.tanh(sum(w[c] * cats[c]['rz'] for c in cats) / Wt),
         std_ratio=sum(w[c] * cats[c]['stdr'] for c in cats) / Wt,
+        skill_ew_mean=_catavg(cats, w, 'ew'),      # station mean, q=2 (stress ~U^2)
+        skill_ew_u3_mean=_catavg(cats, w, 'ew3'),  # station mean, q=3 (energy ~U^3)
         cats='+'.join(f"{c}({cats[c]['n_sta']})" for c in sorted(cats)))
 
 
@@ -175,10 +216,12 @@ for label, d in ERA_DIRS.items():
         res = {m: combine_skill(g) for m, g in df.groupby('model')}
         res = {m: c for m, c in res.items() if c}
         res = dict(sorted(res.items(), key=lambda kv: kv[1]['skill'], reverse=True))
-        print(f"\n  [{var}]  (pooled Murphy skill; skill_dm = bias-removed)")
-        print(f"  {'model':<12} {'skill':>7} {'skill_dm':>8} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
+        print(f"\n  [{var}]  (pooled Murphy skill; skill_dm = bias-removed; ew* = station-mean energy-weighted)")
+        print(f"  {'model':<16} {'skill':>7} {'skill_dm':>8} {'ew_q2':>7} {'ew_q3':>7} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
         for m, c in res.items():
-            print(f"  {m:<12} {c['skill']:>7.3f} {c['skill_dm']:>8.3f} {c['rmse']:>6.2f} {c['bias']:>+6.2f} "
+            print(f"  {m:<16} {c['skill']:>7.3f} {c['skill_dm']:>8.3f} "
+                  f"{c['skill_ew_mean']:>7.3f} {c['skill_ew_u3_mean']:>7.3f} "
+                  f"{c['rmse']:>6.2f} {c['bias']:>+6.2f} "
                   f"{c['corr']:>6.3f} {c['std_ratio']:>6.2f}  {c['cats']}")
             rows_all.append({'era': label, 'variable': var, 'model': m, **c})
         colors = model_color_map(list(res)); models = list(res)
@@ -218,7 +261,8 @@ for label, d in ERA_DIRS.items():
     print(f"  -> figures saved in {d}")
 
 if rows_all:
-    (config.OUTPUT_ROOT / 'rankings').mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows_all).to_csv(config.OUTPUT_ROOT / 'rankings' / 'combined_skill_weighted.csv', index=False)
-    print(f"\nWrote {config.OUTPUT_ROOT / 'rankings' / 'combined_skill_weighted.csv'}")
+    _rank = config.OUTPUT_ROOT / RANK_DIR
+    _rank.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows_all).to_csv(_rank / 'combined_skill_weighted.csv', index=False)
+    print(f"\nWrote {_rank / 'combined_skill_weighted.csv'}  (weights={WEIGHTS})")
 print("\nDONE.")
