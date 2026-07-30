@@ -1959,6 +1959,38 @@ def _load_landboundary(ldb_path):
     return polygons
 
 
+# Optional coastline injected by the driver (see run_validation.py). When set it wins
+# over LDB_FILE, which is not present in every deployment of the data bundle.
+LDB_POLYGONS_OVERRIDE = None
+
+
+def coastline_from_landsea(path, level=0.5):
+    """Derive coastline polylines by contouring a 0/1 land-sea mask.
+
+    Returns the same structure as _load_landboundary: a list of (x, y) arrays in
+    metres, so it drops straight into the ldb_polygons interface. Used when no
+    Delft3D .ldb land boundary is available.
+    """
+    import matplotlib.pyplot as _plt
+    ds = xr.open_dataset(str(path))
+    var = [v for v in ds.data_vars if 'landsea' in v.lower()] or list(ds.data_vars)
+    mask = ds[var[0]].values.astype(float)
+    xv = ds['x'].values.astype(float)
+    yv = ds['y'].values.astype(float)
+    ds.close()
+
+    fig = _plt.figure()
+    try:
+        cs = fig.add_subplot(111).contour(xv, yv, mask, levels=[level])
+        polys = []
+        for seg in cs.allsegs[0]:
+            if len(seg) > 1:
+                polys.append((seg[:, 0], seg[:, 1]))
+    finally:
+        _plt.close(fig)
+    return polys
+
+
 def _plot_landboundary(ax, ldb_polygons):
     """Plot land boundary polylines on an axis (coordinates in km)."""
     for xp, yp in ldb_polygons:
@@ -3080,7 +3112,10 @@ def main():
 
     # --- Load land boundary ------------------------------------------------
     ldb_polygons = None
-    if LDB_FILE.exists():
+    if LDB_POLYGONS_OVERRIDE is not None:
+        ldb_polygons = LDB_POLYGONS_OVERRIDE
+        print(f"\n  Land boundary: {len(ldb_polygons)} polylines (from land-sea mask)")
+    elif LDB_FILE.exists():
         print(f"\n  Loading land boundary: {LDB_FILE}")
         ldb_polygons = _load_landboundary(LDB_FILE)
         print(f"    Loaded {len(ldb_polygons)} polylines")

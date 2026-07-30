@@ -44,15 +44,22 @@ for r in os_av_bc24_terr_res_s2 os_wo_bc24_base_res_s2; do
 done
 
 # baselines
+# NOTE the air_temperature files: the engine opens each model's temp_file even in
+# wind-only mode, and a missing one makes the whole product fail the path audit and
+# vanish from the run silently. This has bitten twice -- keep them linked.
 for f in ERA5_eastward_wind_1940_2026_UTM.nc ERA5_northward_wind_1940_2026_UTM.nc; do
   ln -sf "$RAW/$f" "$M/era5/$f"
 done
+ln -sf "$C404/ERA5_air_temperature_1940_2026_UTM.nc" \
+       "$M/era5/ERA5_air_temperature_1940_2026_UTM.nc"
 for f in CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc \
-         CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc; do
+         CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc \
+         CONUS404_SFbay_4km_air_temperature_1979_2021_UTM10.nc; do
   ln -sf "$C404/$f" "$M/conus404/$f"
 done
 for f in RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc \
-         RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc; do
+         RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc \
+         RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc; do
   ln -sf "$RAW/$f" "$M/rtma/$f"
 done
 

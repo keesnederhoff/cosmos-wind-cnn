@@ -104,6 +104,9 @@ ERA5_DIR      = DATA_ROOT / "modeled_data" / "era5"
 CNN_DIR       = DATA_ROOT / "modeled_data" / "cnn_fullrecord"
 C404_DIR      = DATA_ROOT / "modeled_data" / "conus404"
 RTMA_DIR      = DATA_ROOT / "modeled_data" / "rtma"
+# 0/1 land-sea mask on the RTMA 2.5 km UTM-10 grid. Used to draw a coastline on the
+# spatial maps: the Delft3D deltabay.ldb referenced by LDB_FILE is not staged here.
+LANDSEA_FILE  = RTMA_DIR / "RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc"
 CNN_FILE      = CNN_DIR / "CNN_conus404_full_record_ERA5_19400101_20270101.nc"
 CNN_RTMA_FILE = CNN_DIR / "CNN_rtma_full_record_ERA5_19400101_20270101.nc"
 
