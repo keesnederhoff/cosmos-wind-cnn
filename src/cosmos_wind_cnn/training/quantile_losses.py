@@ -219,22 +219,43 @@ def twcrps_numpy(pred_q, y, taus, threshold):
                       np.maximum(y, threshold), taus)
 
 
-def pit_values(pred_q, y, taus):
-    """Probability-integral-transform value per sample.
+def pit_values(pred_q, y, taus=None):
+    """Probability-integral transform: normalised rank of the observation.
 
-    The fraction of predicted quantiles at or below the observation. A
-    calibrated forecast gives a FLAT histogram; the documented under-dispersion
-    predicts a U shape (observations too often outside the predicted range).
+    The fraction of predicted quantiles strictly below the observation, i.e. the
+    predictive CDF evaluated at y. A CALIBRATED forecast gives a FLAT histogram
+    on [0, 1]; the documented under-dispersion predicts a U shape (observations
+    fall outside the predicted range too often). Over-dispersion gives a hump.
+
+    `taus` is accepted and ignored, so callers can pass it alongside the other
+    scoring helpers without special-casing.
     """
-    below = (pred_q <= y[:, None]).sum(axis=1)
-    return np.asarray(taus)[np.clip(below - 1, 0, len(taus) - 1)] * (below > 0)
+    return (pred_q < y[:, None]).sum(axis=1) / float(pred_q.shape[1])
+
+
+def _quantile_at(pred_q, taus, t):
+    """Linearly interpolate the predicted quantile VALUE at level `t`.
+
+    Snapping to the nearest grid index instead would widen the interval by up to
+    half a quantile spacing and inflate reported coverage -- on a 19-level grid
+    that is ~5 points, enough to make a calibrated forecast look over-dispersed.
+    Levels outside the grid clamp to its end (flat extrapolation).
+    """
+    taus = np.asarray(taus)
+    j = int(np.clip(np.searchsorted(taus, t), 1, len(taus) - 1))
+    t0, t1 = float(taus[j - 1]), float(taus[j])
+    w = (t - t0) / (t1 - t0) if t1 > t0 else 0.0
+    w = min(max(w, 0.0), 1.0)
+    return pred_q[:, j - 1] * (1.0 - w) + pred_q[:, j] * w
 
 
 def interval_coverage(pred_q, y, taus, level):
-    """Empirical coverage of the central `level` interval (e.g. 0.9)."""
+    """Empirical coverage of the central `level` interval (e.g. 0.9).
+
+    A calibrated forecast returns ~`level`. Below it => under-dispersed, which is
+    the documented v2 failure mode; above => over-dispersed.
+    """
     lo_t, hi_t = (1.0 - level) / 2.0, 1.0 - (1.0 - level) / 2.0
-    lo = np.interp(lo_t, taus, np.arange(len(taus)))
-    hi = np.interp(hi_t, taus, np.arange(len(taus)))
-    lo_v = pred_q[:, int(np.floor(lo))]
-    hi_v = pred_q[:, int(np.ceil(hi))]
+    lo_v = _quantile_at(pred_q, taus, lo_t)
+    hi_v = _quantile_at(pred_q, taus, hi_t)
     return float(np.mean((y >= lo_v) & (y <= hi_v)))

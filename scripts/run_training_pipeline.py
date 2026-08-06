@@ -46,6 +46,8 @@ from cosmos_wind_cnn.data.preprocessing import NetCDFPreprocessor
 from cosmos_wind_cnn.inference import run_streaming_inference
 from cosmos_wind_cnn.data.regridder import Regridder
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
+from cosmos_wind_cnn.training.quantile_losses import (
+    crps_numpy, twcrps_numpy, pit_values, interval_coverage)
 from cosmos_wind_cnn.utils.config import (
     load_config, parse_variable_config, get_run_dirs, get_data_dir, var_units_for, wind_var_names,
     env_bool, env_list,
@@ -375,6 +377,14 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     # Load inference and processed data
     inference_ds = xr.open_dataset(inference_path, chunks='auto')
 
+    # A probabilistic run carries hr_speed_q; a deterministic one does not, and
+    # then every block below degrades to exactly the previous behaviour.
+    has_q = 'hr_speed_q' in inference_ds
+    if has_q:
+        q_taus = np.asarray(inference_ds['quantile'].values, dtype=float)
+        print(f"    Probabilistic output detected: {len(q_taus)} quantile levels "
+              f"({q_taus[0]:.3f} .. {q_taus[-1]:.3f})")
+
     splits = []
     for name in ('train', 'val', 'test'):
         p = processed_dir / f'{name}.nc'
@@ -435,6 +445,11 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     tru_v_all = processed_ds[v_tgt].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
     e5_u_all = processed_ds[u_in].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
     e5_v_all = processed_ds[v_in].isel(y=pts_y, x=pts_x).transpose('time', 'points').values
+    if has_q:
+        # (time, quantile, points) -- ~400 MB at 52k steps x 19 levels x 100 points.
+        mod_q_all = (inf_sub['hr_speed_q'].isel(y=pts_y, x=pts_x)
+                     .transpose('time', 'quantile', 'points').values)
+        pit_pool = []
 
     for pt, (iy, ix) in enumerate(tqdm(zip(iys, ixs),
                                         total=n_points,
@@ -480,7 +495,7 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
         _me = (mod_ws[mask] - _tw) ** 2
         _ee = (e5_ws[mask] - _tw) ** 2
         ss_ew = {}
-        for _q in (2, 3):
+        for _q in (1, 2, 3):
             _w = _tw ** _q
             _wsum = _w.sum()
             if _wsum > 0:
@@ -495,14 +510,53 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
         rmse_mod_v = float(np.sqrt(np.nanmean((mod_v[mask] - tru_v[mask])**2)))
         rmse_e5_v = float(np.sqrt(np.nanmean((e5_v[mask] - tru_v[mask])**2)))
 
-        all_records.append({
+        # Dispersion + bias of the deterministic (P50) field. std_ratio is the
+        # tell for the peak under-prediction this whole design targets: v2
+        # measured 0.76-0.83 against a correctly-dispersed 1.0.
+        bias_mod = float(np.mean(mod_ws[mask] - tru_ws[mask]))
+        std_ratio = float(np.std(mod_ws[mask]) / (np.std(tru_ws[mask]) + 1e-8))
+
+        # --- probabilistic scores -------------------------------------------
+        prob = {}
+        if has_q:
+            pq = mod_q_all[inf_idx_rel, :, pt].astype(float)   # (T, Q)
+            qm = mask & np.isfinite(pq).all(axis=1)
+            if qm.sum() >= 10:
+                yq = tru_ws[qm]
+                pqm = pq[qm]
+                crps_mod = float(np.mean(crps_numpy(pqm, yq, q_taus)))
+                # ERA5 is a single-valued forecast, and CRPS of a point forecast
+                # is exactly MAE -- the fair common reference.
+                crps_e5 = float(np.mean(np.abs(e5_ws[qm] - yq)))
+                prob['crps_model'] = crps_mod
+                prob['crps_lr'] = crps_e5
+                prob['crps_skill'] = (1.0 - crps_mod / crps_e5
+                                      if crps_e5 > 0 else np.nan)
+                for thr in (10.0, 15.0):
+                    tw_m = float(np.mean(twcrps_numpy(pqm, yq, q_taus, thr)))
+                    tw_e = float(np.mean(np.abs(np.maximum(e5_ws[qm], thr)
+                                                - np.maximum(yq, thr))))
+                    prob[f'twcrps_model_{int(thr)}'] = tw_m
+                    prob[f'twcrps_skill_{int(thr)}'] = (1.0 - tw_m / tw_e
+                                                        if tw_e > 0 else np.nan)
+                for lev in (0.5, 0.8, 0.9):
+                    prob[f'coverage_{int(lev*100)}'] = interval_coverage(
+                        pqm, yq, q_taus, lev)
+                pit_pool.append(pit_values(pqm, yq))
+
+        all_records.append({})
+        all_records[-1].update(prob)
+
+        all_records[-1].update({
             'iy': iy, 'ix': ix, 'n_valid': int(mask.sum()),
             'rmse_model_ws': rmse_mod, 'rmse_lr_ws': rmse_e5,
             'skill_score_ws': ss,
+            'bias_model_ws': bias_mod, 'std_ratio_ws': std_ratio,
             'rmse_model_u': rmse_mod_u, 'rmse_lr_u': rmse_e5_u,
             'rmse_model_v': rmse_mod_v, 'rmse_lr_v': rmse_e5_v,
             'rmse_model_ws_ext': rmse_mod_ext, 'rmse_lr_ws_ext': rmse_e5_ext,
             'skill_score_ws_ext': ss_ext, 'n_ext': n_ext,
+            'skill_score_ws_ew_q1': ss_ew[1],
             'skill_score_ws_ew_q2': ss_ew[2], 'skill_score_ws_ew_q3': ss_ew[3],
         })
         running_ss.append(ss)
@@ -539,12 +593,68 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
             'mean_extreme_hours_per_point': float(df['n_ext'].mean()),
         },
         'wind_speed_energy_weighted': {
+            'q1_median_skill_score': float(np.nanmedian(df['skill_score_ws_ew_q1'])),
+            'q1_mean_skill_score': float(np.nanmean(df['skill_score_ws_ew_q1'])),
             'q2_median_skill_score': float(np.nanmedian(df['skill_score_ws_ew_q2'])),
             'q2_mean_skill_score': float(np.nanmean(df['skill_score_ws_ew_q2'])),
             'q3_median_skill_score': float(np.nanmedian(df['skill_score_ws_ew_q3'])),
             'q3_mean_skill_score': float(np.nanmean(df['skill_score_ws_ew_q3'])),
         },
+        # Dispersion of the deterministic (P50) field. std_ratio is the headline
+        # diagnostic for this whole design: v2 measured 0.76-0.83 against a
+        # correctly-dispersed 1.0, and that deficit IS the peak under-prediction.
+        'dispersion': {
+            'median_std_ratio': float(np.nanmedian(df['std_ratio_ws'])),
+            'mean_std_ratio': float(np.nanmean(df['std_ratio_ws'])),
+            'median_bias': float(np.nanmedian(df['bias_model_ws'])),
+            'mean_bias': float(np.nanmean(df['bias_model_ws'])),
+        },
     }
+
+    # ---- probabilistic blocks (present only for a quantile run) -------------
+    if has_q and 'crps_model' in df.columns:
+        summary['crps'] = {
+            'mean_crps_model': float(np.nanmean(df['crps_model'])),
+            'mean_crps_lr': float(np.nanmean(df['crps_lr'])),
+            'median_crps_skill': float(np.nanmedian(df['crps_skill'])),
+            'mean_crps_skill': float(np.nanmean(df['crps_skill'])),
+            'note': ('ERA5 is a single-valued forecast and CRPS of a point '
+                     'forecast equals its MAE, which is what makes it a fair '
+                     'common reference for a probabilistic model.'),
+        }
+        summary['twcrps'] = {
+            f'threshold_{t}ms': {
+                'mean_model': float(np.nanmean(df[f'twcrps_model_{t}'])),
+                'median_skill': float(np.nanmedian(df[f'twcrps_skill_{t}'])),
+                'mean_skill': float(np.nanmean(df[f'twcrps_skill_{t}'])),
+            }
+            for t in (10, 15) if f'twcrps_model_{t}' in df.columns
+        }
+
+        # Calibration. A calibrated forecast gives a FLAT PIT histogram; the
+        # under-dispersion diagnosis predicts a U shape (too many observations
+        # outside the predicted range). This is what makes the whole premise
+        # falsifiable rather than merely plausible.
+        cal = {f'coverage_{lev}': {
+                   'nominal': lev / 100.0,
+                   'observed': float(np.nanmean(df[f'coverage_{lev}'])),
+               }
+               for lev in (50, 80, 90) if f'coverage_{lev}' in df.columns}
+        if pit_pool:
+            pit_all = np.concatenate(pit_pool)
+            nb = 10
+            hist, edges = np.histogram(pit_all, bins=nb, range=(0.0, 1.0))
+            hist = hist / max(1, hist.sum())
+            # Deviation from flat: 0 = perfectly calibrated.
+            cal['pit_histogram'] = {
+                'bin_edges': [float(e) for e in edges],
+                'frequency': [float(h) for h in hist],
+                'n_samples': int(pit_all.size),
+                'flatness_l1': float(np.abs(hist - 1.0 / nb).sum()),
+                'edge_mass': float(hist[0] + hist[-1]),
+                'edge_mass_expected': float(2.0 / nb),
+            }
+        summary['calibration'] = cal
     with open(output_dir / 'grid_point_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
 
@@ -558,9 +668,27 @@ def step_evaluate_grid_points(case_dir, run_dirs, inference_path,
     _rl_ext = float(np.nanmean(df['rmse_lr_ws_ext']))
     print(f"      [>10 m/s] skill (median): {_ss_ext:.3f}  "
           f"RMSE model {_rm_ext:.3f} / LR {_rl_ext:.3f} m/s")
+    _ew1 = float(np.nanmedian(df['skill_score_ws_ew_q1']))
     _ew2 = float(np.nanmedian(df['skill_score_ws_ew_q2']))
     _ew3 = float(np.nanmedian(df['skill_score_ws_ew_q3']))
-    print(f"      [energy-wt] skill (median): U^2 {_ew2:.3f}  U^3 {_ew3:.3f}")
+    print(f"      [energy-wt] skill (median): U^1 {_ew1:.3f}  "
+          f"U^2 {_ew2:.3f}  U^3 {_ew3:.3f}")
+    print(f"      bias {float(np.nanmedian(df['bias_model_ws'])):+.3f} m/s   "
+          f"std_ratio {float(np.nanmedian(df['std_ratio_ws'])):.3f} "
+          f"(1.0 = correctly dispersed)")
+    if has_q and 'crps_skill' in df.columns:
+        print(f"      CRPS model {float(np.nanmean(df['crps_model'])):.3f} vs "
+              f"LR {float(np.nanmean(df['crps_lr'])):.3f} m/s   "
+              f"skill {float(np.nanmedian(df['crps_skill'])):.3f}")
+        for t in (10, 15):
+            if f'twcrps_skill_{t}' in df.columns:
+                print(f"      twCRPS@{t} m/s skill (median): "
+                      f"{float(np.nanmedian(df[f'twcrps_skill_{t}'])):.3f}")
+        for lev in (50, 80, 90):
+            if f'coverage_{lev}' in df.columns:
+                obs = float(np.nanmean(df[f'coverage_{lev}']))
+                print(f"      coverage {lev}%: observed {100*obs:.1f}% "
+                      f"({'under' if obs < lev/100 else 'over'}-dispersed)")
     print(f"    Saved to: {output_dir}")
 
     # Close datasets

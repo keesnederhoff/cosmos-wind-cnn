@@ -116,9 +116,11 @@ def _cat_stats(g):
     # These mirror the wave_exp p2/p3 training loss. They are NOT poolable the way
     # MSE/variance are -- the weighted sums are not recoverable from rmse/bias --
     # so carry the sample-size-weighted station MEAN and label it as such.
+    ew1 = _nw_mean(g['skill_ew_u1'].values, n) if 'skill_ew_u1' in g else np.nan
     ew = _nw_mean(g['skill_ew'].values, n) if 'skill_ew' in g else np.nan
     ew3 = _nw_mean(g['skill_ew_u3'].values, n) if 'skill_ew_u3' in g else np.nan
-    return dict(mse=mse, cmse=cmse, var=var, bias=bias, rz=rz, stdr=stdr, ew=ew, ew3=ew3,
+    return dict(mse=mse, cmse=cmse, var=var, bias=bias, rz=rz, stdr=stdr,
+                ew1=ew1, ew=ew, ew3=ew3,
                 skill_c=(1.0 - mse / var if var > 0 else np.nan), n_sta=len(g))
 
 
@@ -138,6 +140,7 @@ def combine_skill(df_m):
         bias=sum(w[c] * cats[c]['bias'] for c in cats) / Wt,
         corr=np.tanh(sum(w[c] * cats[c]['rz'] for c in cats) / Wt),
         std_ratio=sum(w[c] * cats[c]['stdr'] for c in cats) / Wt,
+        skill_ew_u1_mean=_catavg(cats, w, 'ew1'),  # station mean, q=1 (linear)
         skill_ew_mean=_catavg(cats, w, 'ew'),      # station mean, q=2 (stress ~U^2)
         skill_ew_u3_mean=_catavg(cats, w, 'ew3'),  # station mean, q=3 (energy ~U^3)
         cats='+'.join(f"{c}({cats[c]['n_sta']})" for c in sorted(cats)))
@@ -217,9 +220,10 @@ for label, d in ERA_DIRS.items():
         res = {m: c for m, c in res.items() if c}
         res = dict(sorted(res.items(), key=lambda kv: kv[1]['skill'], reverse=True))
         print(f"\n  [{var}]  (pooled Murphy skill; skill_dm = bias-removed; ew* = station-mean energy-weighted)")
-        print(f"  {'model':<16} {'skill':>7} {'skill_dm':>8} {'ew_q2':>7} {'ew_q3':>7} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
+        print(f"  {'model':<16} {'skill':>7} {'skill_dm':>8} {'ew_q1':>7} {'ew_q2':>7} {'ew_q3':>7} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
         for m, c in res.items():
             print(f"  {m:<16} {c['skill']:>7.3f} {c['skill_dm']:>8.3f} "
+                  f"{c['skill_ew_u1_mean']:>7.3f} "
                   f"{c['skill_ew_mean']:>7.3f} {c['skill_ew_u3_mean']:>7.3f} "
                   f"{c['rmse']:>6.2f} {c['bias']:>+6.2f} "
                   f"{c['corr']:>6.3f} {c['std_ratio']:>6.2f}  {c['cats']}")
