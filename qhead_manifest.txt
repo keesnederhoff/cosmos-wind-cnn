@@ -1,0 +1,64 @@
+# v3 predictor-block campaign — one arm per line, read by scripts/gpu_qhead.slurm
+#
+# Columns:  RN  HEAD  QW_EXP  GUST_W  ADD_INPUTS
+#   RN         run name (also the results dir)
+#   HEAD       quantile | det
+#   QW_EXP     loss_qw_exp — tail emphasis on the QUANTILE axis (proper).
+#              Fixed at 2.0 for the campaign; it is a separate dial from the
+#              predictor question and sweeping both at once would confound them.
+#   GUST_W     loss_gust_weight (auxiliary gust task)
+#   ADD_INPUTS additional_inputs, comma-separated, NO spaces
+#
+# Blocks are ADDITIVE to P0 so each effect is attributable. Note lr_u / lr_v /
+# lr_gust are not listed: they are the low_res partners of the variable_pairs and
+# are therefore always present.
+#
+# 6 blocks x 3 seeds = 18 arms. train.py sets no manual seed, so relaunching the
+# same config is an independent draw -- which is the whole point, since seed noise
+# (sigma ~0.018-0.040) exceeded every architectural effect measured in v2.
+#
+# C1 = deterministic control at P0: isolates the HEAD change from the DATA change.
+# Without it any improvement is unattributable. nonwind_weight=0 keeps it a
+# wind-only control (the gust channel gets no gradient).
+#
+# C2 (train on 2011+ vs 2020+) is DEFERRED: it needs a second ~250 GB
+# preprocessed store with the v3 channels over 2011-2026, and the temporal split
+# would put its test window somewhere else entirely, so it is not a like-for-like
+# comparison without extra work. Prior evidence (val peaks by epoch 3-10, dropout
+# 0.0 wins) says the model is predictor-limited rather than data-limited, which
+# makes this the lower-value control. Revisit if P5 shows an overfitting gap.
+
+# --- P0 baseline -------------------------------------------------------------
+qh_P0_s1  quantile  2.0  0.2  lr_cloud,static_terrain
+qh_P0_s2  quantile  2.0  0.2  lr_cloud,static_terrain
+qh_P0_s3  quantile  2.0  0.2  lr_cloud,static_terrain
+
+# --- P1 flow above the surface layer ----------------------------------------
+qh_P1_s1  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850
+qh_P1_s2  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850
+qh_P1_s3  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850
+
+# --- P2 stability and mixing depth ------------------------------------------
+qh_P2_s1  quantile  2.0  0.2  lr_cloud,static_terrain,lr_skint,lr_t925,lr_blh,lr_slhf
+qh_P2_s2  quantile  2.0  0.2  lr_cloud,static_terrain,lr_skint,lr_t925,lr_blh,lr_slhf
+qh_P2_s3  quantile  2.0  0.2  lr_cloud,static_terrain,lr_skint,lr_t925,lr_blh,lr_slhf
+
+# --- P3 surface turbulence ---------------------------------------------------
+qh_P3_s1  quantile  2.0  0.2  lr_cloud,static_terrain,lr_ustar,lr_z0,lr_cape
+qh_P3_s2  quantile  2.0  0.2  lr_cloud,static_terrain,lr_ustar,lr_z0,lr_cape
+qh_P3_s3  quantile  2.0  0.2  lr_cloud,static_terrain,lr_ustar,lr_z0,lr_cape
+
+# --- P4 synoptic pressure gradient ------------------------------------------
+qh_P4_s1  quantile  2.0  0.2  lr_cloud,static_terrain,lr_mslp,lr_z925,lr_z850,lr_z500
+qh_P4_s2  quantile  2.0  0.2  lr_cloud,static_terrain,lr_mslp,lr_z925,lr_z850,lr_z500
+qh_P4_s3  quantile  2.0  0.2  lr_cloud,static_terrain,lr_mslp,lr_z925,lr_z850,lr_z500
+
+# --- P5 everything + derived statics ----------------------------------------
+qh_P5_s1  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850,lr_skint,lr_t925,lr_blh,lr_slhf,lr_ustar,lr_z0,lr_cape,lr_mslp,lr_z925,lr_z850,lr_z500,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+qh_P5_s2  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850,lr_skint,lr_t925,lr_blh,lr_slhf,lr_ustar,lr_z0,lr_cape,lr_mslp,lr_z925,lr_z850,lr_z500,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+qh_P5_s3  quantile  2.0  0.2  lr_cloud,static_terrain,lr_u100,lr_v100,lr_u925,lr_v925,lr_u850,lr_v850,lr_skint,lr_t925,lr_blh,lr_slhf,lr_ustar,lr_z0,lr_cape,lr_mslp,lr_z925,lr_z850,lr_z500,static_dhdx,static_dhdy,static_landsea,static_tpi,static_distcoast
+
+# --- C1 deterministic control (head change isolated) -------------------------
+c1_det_P0_s1  det  0.0  0.0  lr_cloud,static_terrain
+c1_det_P0_s2  det  0.0  0.0  lr_cloud,static_terrain
+c1_det_P0_s3  det  0.0  0.0  lr_cloud,static_terrain
