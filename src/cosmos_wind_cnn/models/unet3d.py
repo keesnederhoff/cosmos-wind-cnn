@@ -15,6 +15,7 @@ class Wind3DUNET(nn.Module):
     """
 
     def __init__(self, in_channels, out_channels, base_channels=32, dropout_rate=0.0,
+                 quantile_head=None,
                  residual_learning=False, residual_idx=None,
                  residual_scale=None, residual_shift=None):
         """
@@ -107,8 +108,29 @@ class Wind3DUNET(nn.Module):
         )
         self.dec1 = self.conv_block_3d(base_channels*2, base_channels, dropout_rate)
 
-        # Output layer - predict for last timestep
-        self.out = nn.Conv2d(base_channels, out_channels, kernel_size=1)
+        # Output layer - predict for last timestep.
+        #
+        # Two mutually exclusive modes:
+        #   quantile_head is None -> the original deterministic 1x1 conv, one
+        #       channel per output variable, in z-scored space.
+        #   quantile_head given   -> a QuantileWindHead emitting monotone wind
+        #       speed quantiles + a unit direction vector (+ optional gust
+        #       quantiles) in PHYSICAL units. It performs its own ERA5 anchoring,
+        #       which is why it is incompatible with residual_learning below.
+        self.quantile_head = quantile_head
+        if quantile_head is None:
+            self.out = nn.Conv2d(base_channels, out_channels, kernel_size=1)
+            self.n_head_out = out_channels
+        else:
+            if residual_learning:
+                raise ValueError(
+                    "quantile_head and residual_learning are mutually exclusive: "
+                    "the quantile head already anchors both speed and direction "
+                    "on the interpolated ERA5 field, so adding the residual skip "
+                    "would apply the anchor twice."
+                )
+            self.out = None
+            self.n_head_out = quantile_head.n_out
 
     def conv_block_3d(self, in_ch, out_ch, dropout_rate=0.0):
         """3D convolutional block with BatchNorm, ReLU and optional Dropout"""
@@ -191,6 +213,11 @@ class Wind3DUNET(nn.Module):
         # d1 shape: (batch, channels, seq_len, H, W)
         d1_last = d1[:, :, -1, :, :]  # (batch, channels, H, W)
 
+        if self.quantile_head is not None:
+            # x was permuted to (batch, channels, seq_len, H, W) above, which is
+            # the layout the head expects for rebuilding the ERA5 anchor.
+            return self.quantile_head(d1_last, x)
+
         output = self.out(d1_last)
 
         if self.residual_learning:
@@ -235,10 +262,72 @@ def build_wind3dunet(train_config, stats, input_vars, output_vars):
             residual_shift=shift,
         )
 
+    # --- probabilistic head -------------------------------------------------
+    if str(train_config.get('head', 'det')).lower() in ('quantile', 'q'):
+        kwargs['quantile_head'] = _build_quantile_head(
+            train_config, stats, input_vars, output_vars
+        )
+
     return Wind3DUNET(
         in_channels=len(input_vars),
         out_channels=len(output_vars),
         base_channels=train_config.get('base_channels', 32),
         dropout_rate=train_config.get('dropout_rate', 0.0),
         **kwargs,
+    )
+
+
+def _stat_pair(stats, var):
+    """(mean, std) for `var`, with a clear error if preprocessing never saw it."""
+    if stats is None or var not in stats:
+        raise ValueError(
+            f"normalization stats missing for '{var}'. The quantile head anchors "
+            f"on the interpolated ERA5 field, so its stats must exist in "
+            f"normalization_stats.json."
+        )
+    return float(stats[var]['mean']), float(stats[var]['std'])
+
+
+def _build_quantile_head(train_config, stats, input_vars, output_vars):
+    """Assemble a QuantileWindHead from config + normalization stats.
+
+    The head deliberately declares its structure explicitly instead of inheriting
+    `parse_variable_config`'s name-sniffing heuristic, which detects wind pairs
+    with `'wind' in name` then splits on `'u' in name` / `'v' in name`. A pair
+    keyed `wind_gust` matches BOTH 'wind' and 'u' (in "gust") and would silently
+    corrupt the u/v pairing.
+    """
+    from cosmos_wind_cnn.models.quantile_head import QuantileWindHead
+
+    anchor_u = train_config.get('anchor_u', 'lr_u')
+    anchor_v = train_config.get('anchor_v', 'lr_v')
+    for v in (anchor_u, anchor_v):
+        if v not in input_vars:
+            raise ValueError(
+                f"quantile head anchor '{v}' is not an input channel. "
+                f"input_vars={input_vars}"
+            )
+    um, us = _stat_pair(stats, anchor_u)
+    vm, vs = _stat_pair(stats, anchor_v)
+
+    n_speed = int(train_config.get('n_quantiles', 19))
+
+    # Gust is optional and only active when a target for it exists.
+    n_gust = 0
+    gust_anchor = None
+    gust_target = train_config.get('gust_target', 'hr_gust')
+    if gust_target in output_vars:
+        n_gust = int(train_config.get('n_gust_quantiles', 9))
+        gust_input = train_config.get('gust_input', 'lr_gust')
+        if gust_input in input_vars:
+            gm, gsd = _stat_pair(stats, gust_input)
+            gust_anchor = (input_vars.index(gust_input), gm, gsd)
+
+    return QuantileWindHead(
+        in_channels=train_config.get('base_channels', 32),
+        n_speed=n_speed,
+        anchor_idx=(input_vars.index(anchor_u), input_vars.index(anchor_v)),
+        anchor_denorm=(um, us, vm, vs),
+        n_gust=n_gust,
+        gust_anchor=gust_anchor,
     )

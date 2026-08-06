@@ -109,6 +109,7 @@ def validate(model, dataloader, criterion, device, disable_tqdm=False):
     model.eval()
     val_loss = 0.0
     val_components = {}
+    _is_quantile = getattr(criterion, 'is_quantile', False)
 
     all_preds = []
     all_targets = []
@@ -127,13 +128,31 @@ def validate(model, dataloader, criterion, device, disable_tqdm=False):
                     val_components[key] = 0
                 val_components[key] += val
 
-            all_preds.append(outputs.cpu())
-            all_targets.append(targets.cpu())
+            # A distributional head emits n_speed + 2 + n_gust channels, which
+            # do not align with the target channels, and accumulating them over
+            # the whole validation set would cost several GB for no benefit --
+            # its diagnostics are already aggregated from loss_components.
+            if not _is_quantile:
+                all_preds.append(outputs.cpu())
+                all_targets.append(targets.cpu())
 
     # Calculate metrics
     n_batches = len(dataloader)
     avg_loss = val_loss / n_batches
     avg_components = {k: v / n_batches for k, v in val_components.items()}
+
+    if _is_quantile:
+        # Deterministic u/v metrics are undefined for a distributional head.
+        # Surface the P50 (best-estimate) and probabilistic scores instead, under
+        # the names the training loop already prints.
+        metrics = {
+            'rmse': avg_components.get('p50_rmse', float('nan')),
+            'crps': avg_components.get('crps', float('nan')),
+            'twcrps': avg_components.get('twcrps', float('nan')),
+            'p50_bias': avg_components.get('p50_bias', float('nan')),
+            'std_ratio': avg_components.get('std_ratio', float('nan')),
+        }
+        return avg_loss, avg_components, metrics
 
     # Calculate all metrics on full predictions
     all_preds = torch.cat(all_preds)

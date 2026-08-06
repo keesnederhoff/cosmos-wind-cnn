@@ -34,6 +34,7 @@ from cosmos_wind_cnn.data.dataset import WindDataset3D, WindDatasetInMemory
 from cosmos_wind_cnn.data.dataset_memmap import WindDatasetMemmap
 from cosmos_wind_cnn.models.unet3d import Wind3DUNET, build_wind3dunet
 from cosmos_wind_cnn.training.losses import CombinedLoss
+from cosmos_wind_cnn.training.quantile_losses import QuantileWindLoss
 from cosmos_wind_cnn.training.trainer import train_one_epoch, validate
 from cosmos_wind_cnn.utils.config import (
     load_config, parse_variable_config, get_run_dirs,
@@ -123,7 +124,11 @@ def main():
                               ('SWEEP_EXTREME_THRESH', 'loss_extreme_threshold', float),
                               ('SWEEP_WAVE_WEIGHT', 'loss_wave_weight', float),
                               ('SWEEP_WAVE_EXP', 'loss_wave_exp', float),
-                              ('SWEEP_WAVE_SCALE', 'loss_wave_scale', float)]:
+                              ('SWEEP_WAVE_SCALE', 'loss_wave_scale', float),
+                              ('SWEEP_HEAD', 'head', str),
+                              ('SWEEP_N_QUANTILES', 'n_quantiles', int),
+                              ('SWEEP_QW_EXP', 'loss_qw_exp', float),
+                              ('SWEEP_GUST_WEIGHT', 'loss_gust_weight', float)]:
         if os.environ.get(_env):
             config[_key] = _cast(os.environ[_env])
     if is_main:
@@ -274,19 +279,60 @@ def main():
         print(f"  Wave-energy weighting term ON: loss_wave_weight={_epsilon}, "
               f"wave_exp={config.get('loss_wave_exp', 2.0)}, "
               f"wave_scale={config.get('loss_wave_scale', 10.0)} m/s")
-    criterion = CombinedLoss(
-        wind_pair_indices=wind_pair_indices,
-        alpha=config.get('loss_alpha', 1.0),
-        beta=config.get('loss_beta', 0.5),
-        gamma=config.get('loss_gamma', 0.3),
-        nonwind_weight=config.get('loss_nonwind_weight', 1.0),
-        delta=config.get('loss_delta', 0.0),
-        extreme_threshold=config.get('loss_extreme_threshold', 10.0),
-        wind_denorm=_wind_denorm,
-        epsilon=config.get('loss_wave_weight', 0.0),
-        wave_exp=config.get('loss_wave_exp', 2.0),
-        wave_scale=config.get('loss_wave_scale', 10.0),
-    )
+    _head = str(config.get('head', 'det')).lower()
+    _is_quantile = _head in ('quantile', 'q')
+
+    if _is_quantile:
+        # Distributional objective. The tail emphasis lives on the QUANTILE axis
+        # (loss_qw_exp), which keeps the score PROPER -- unlike loss_delta /
+        # loss_wave_weight, which weight SAMPLES and therefore bias every
+        # quantile including the median. Measured on synthetic wind-speed data:
+        # quantile-weighting shifts the median by 0.0001 m/s, sample-weighting
+        # by 2.8-3.8 m/s.
+        if not wind_pair_indices:
+            raise ValueError("head='quantile' requires a wind pair in variable_pairs")
+        _u_idx, _v_idx = wind_pair_indices[0]
+        _gust_name = config.get('gust_target', 'hr_gust')
+        _gust_idx = output_vars.index(_gust_name) if _gust_name in output_vars else None
+        _n_gust = int(config.get('n_gust_quantiles', 9)) if _gust_idx is not None else 0
+
+        def _sp(name):
+            return (_stats[name]['mean'], _stats[name]['std'])
+
+        criterion = QuantileWindLoss(
+            n_speed=int(config.get('n_quantiles', 19)),
+            qw_exp=float(config.get('loss_qw_exp', 0.0)),
+            gamma=float(config.get('loss_gamma', 0.3)),
+            n_gust=_n_gust,
+            gust_weight=float(config.get('loss_gust_weight', 0.0)),
+            u_stats=_sp(output_vars[_u_idx]),
+            v_stats=_sp(output_vars[_v_idx]),
+            gust_stats=_sp(_gust_name) if _gust_idx is not None else None,
+            u_idx=_u_idx, v_idx=_v_idx, gust_idx=_gust_idx,
+            report_threshold=float(config.get('loss_extreme_threshold', 10.0)),
+        ).to(device)
+        if is_main:
+            print(f"  PROBABILISTIC head: {config.get('n_quantiles', 19)} speed "
+                  f"quantiles, qw_exp={config.get('loss_qw_exp', 0.0)}, "
+                  f"gust_quantiles={_n_gust} "
+                  f"(weight={config.get('loss_gust_weight', 0.0)})")
+            print(f"  Model selection metric: validation twCRPS @ "
+                  f"{config.get('loss_extreme_threshold', 10.0)} m/s "
+                  f"(NOT val_loss)")
+    else:
+        criterion = CombinedLoss(
+            wind_pair_indices=wind_pair_indices,
+            alpha=config.get('loss_alpha', 1.0),
+            beta=config.get('loss_beta', 0.5),
+            gamma=config.get('loss_gamma', 0.3),
+            nonwind_weight=config.get('loss_nonwind_weight', 1.0),
+            delta=config.get('loss_delta', 0.0),
+            extreme_threshold=config.get('loss_extreme_threshold', 10.0),
+            wind_denorm=_wind_denorm,
+            epsilon=config.get('loss_wave_weight', 0.0),
+            wave_exp=config.get('loss_wave_exp', 2.0),
+            wave_scale=config.get('loss_wave_scale', 10.0),
+        )
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -349,7 +395,30 @@ def main():
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        scheduler.step(val_loss)
+        # Selection metric. For the probabilistic head this is validation twCRPS
+        # at the storm threshold rather than the raw loss: checkpoint selection
+        # has repeatedly been a lottery here (identical configs, val_loss within
+        # 0.3%, wind skill 23% apart) whenever the selection quantity was not the
+        # quantity the product is judged on.
+        if _is_quantile:
+            selection_value = all_reduce_mean(
+                val_components.get('twcrps', float('inf')), device)
+            # Degenerate case: no validation winds above the threshold means
+            # twCRPS is identically 0 for every epoch, so it cannot discriminate
+            # and selection would silently become arbitrary -- precisely the
+            # failure this change exists to remove. Fall back to CRPS, loudly.
+            if selection_value <= 0.0:
+                if is_main and epoch == 0:
+                    print("  WARNING: validation twCRPS is 0 -- no winds above "
+                          f"{config.get('loss_extreme_threshold', 10.0)} m/s in "
+                          "the validation split. Falling back to CRPS for "
+                          "selection; check the per-split storm counts.")
+                selection_value = all_reduce_mean(
+                    val_components.get('crps', float('inf')), device)
+        else:
+            selection_value = val_loss
+
+        scheduler.step(selection_value)
         current_lr = optimizer.param_groups[0]['lr']
 
         # --- rank 0: log, print, checkpoint ---
@@ -366,6 +435,13 @@ def main():
             print(f"\nResults:")
             print(f"  Train Loss: {train_loss:.4f}")
             print(f"  Val Loss:   {val_loss:.4f}")
+            if _is_quantile:
+                print(f"  Val CRPS:      {val_components.get('crps', float('nan')):.4f}")
+                print(f"  Val twCRPS:    {selection_value:.4f}  <- selection metric")
+                print(f"  Val P50 RMSE:  {val_components.get('p50_rmse', float('nan')):.4f} m/s")
+                print(f"  Val P50 bias:  {val_components.get('p50_bias', float('nan')):+.4f} m/s")
+                print(f"  Val std_ratio: {val_components.get('std_ratio', float('nan')):.4f}"
+                      f"   (1.0 = correctly dispersed)")
             if 'rmse' in val_metrics:
                 print(f"  Val RMSE:   {val_metrics['rmse']:.4f}")
             if 'mae' in val_metrics:
@@ -383,9 +459,9 @@ def main():
             print(f"  Epoch:   {timedelta(seconds=int(epoch_time))}")
             print(f"  Elapsed: {timedelta(seconds=int(total_elapsed))}")
 
-        # --- all ranks: patience tracking (all have same val_loss after all_reduce) ---
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        # --- all ranks: patience tracking (all ranks share selection_value) ---
+        if selection_value < best_val_loss:
+            best_val_loss = selection_value
             patience_counter = 0
             if is_main:
                 raw_model = model.module if isinstance(model, DDP) else model
@@ -396,11 +472,14 @@ def main():
                     'scheduler_state_dict': scheduler.state_dict(),
                     'train_loss': train_loss,
                     'val_loss': val_loss,
+                    'selection_metric': selection_value,
+                    'selection_metric_name': 'twcrps' if _is_quantile else 'val_loss',
                     'val_metrics': val_metrics,
                     'config': config,
                 }
                 torch.save(checkpoint, checkpoint_dir / 'best_model.pth')
-                print(f"  Saved best model (val_loss: {val_loss:.4f})")
+                _sname = 'twCRPS' if _is_quantile else 'val_loss'
+                print(f"  Saved best model ({_sname}: {selection_value:.4f})")
         else:
             patience_counter += 1
 
