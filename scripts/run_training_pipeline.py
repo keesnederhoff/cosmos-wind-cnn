@@ -196,7 +196,16 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
                               ('SWEEP_SEQ_LEN', 'sequence_length', int),
                               ('SWEEP_DROPOUT', 'dropout_rate', float),
                               ('SWEEP_RESIDUAL', 'residual_learning', env_bool),
-                              ('SWEEP_ADD_INPUTS', 'additional_inputs', env_list)]:
+                              ('SWEEP_ADD_INPUTS', 'additional_inputs', env_list),
+                              # The head settings MUST be replayed here too. The
+                              # archived training.yaml holds file defaults, not
+                              # the per-run env overrides, so without these a
+                              # quantile-trained checkpoint gets rebuilt as a
+                              # deterministic model -- silently wrong output, the
+                              # same trap as the old residual-blind backfill.
+                              ('SWEEP_HEAD', 'head', str),
+                              ('SWEEP_N_QUANTILES', 'n_quantiles', int),
+                              ('SWEEP_GUST_WEIGHT', 'loss_gust_weight', float)]:
         if os.environ.get(_env):
             train_config[_key] = _cast(os.environ[_env])
 
@@ -309,12 +318,34 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     if 'crs' in train_config:
         attrs['crs'] = str(train_config['crs'])
 
+    # Describe the probabilistic head to the writer, or None for the
+    # deterministic path (which stays bit-identical).
+    head_spec = None
+    if str(train_config.get('head', 'det')).lower() in ('quantile', 'q'):
+        from cosmos_wind_cnn.models.quantile_head import make_tau_grid
+        _n_speed = int(train_config.get('n_quantiles', 19))
+        _gust_name = train_config.get('gust_target', 'hr_gust')
+        _n_gust = (int(train_config.get('n_gust_quantiles', 9))
+                   if _gust_name in output_vars else 0)
+        _subset = os.environ.get('INFER_QUANTILES')
+        head_spec = {
+            'n_speed': _n_speed,
+            'n_gust': _n_gust,
+            'speed_taus': make_tau_grid(_n_speed),
+            'gust_taus': make_tau_grid(_n_gust) if _n_gust else None,
+            'quantile_subset': ([float(t) for t in _subset.split(',')]
+                                if _subset else None),
+        }
+        print(f"    Probabilistic output: {_n_speed} speed + {_n_gust} gust "
+              f"quantiles" + (f", writing subset {head_spec['quantile_subset']}"
+                              if head_spec['quantile_subset'] else " (all levels)"))
+
     n_predicted, n_total = run_streaming_inference(
         model, full_ds, input_vars, output_vars, stats, sequence_length,
         output_path, device=device, batch_size=batch_size,
         num_workers=num_workers,
         time_chunk=int(inf_config.get('inference_time_chunk', 10000)),
-        attrs=attrs,
+        attrs=attrs, head_spec=head_spec,
     )
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"\n    Saved: {output_path} ({size_mb:.1f} MB)")
