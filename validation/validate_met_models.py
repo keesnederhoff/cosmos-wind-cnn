@@ -1695,6 +1695,30 @@ def calculate_statistics(model, obs):
     rel_bias = bias / obs_mean if obs_mean != 0 else np.nan
     skill = 1.0 - mse / obs_var if obs_var != 0 else np.nan
 
+    # Energy-weighted (wave-relevant) Murphy skill: weight by obs**q so high
+    # winds dominate. q = 1 (linear), q = 2 (wind stress ~ U^2), q = 3 (wave
+    # energy flux ~ U^3). Weights clipped to >= 0 so this is meaningful for
+    # non-negative fields (wind speed); signed fields degrade gracefully to
+    # near-zero weights rather than erroring.
+    #
+    # NOTE these are NOT poolable the way plain Murphy skill is -- a weighted
+    # sum cannot be recovered from rmse/bias -- so downstream aggregation must
+    # carry them as sample-size-weighted station MEANS (see
+    # validation/analysis/combined_skill.py).
+    _ocw = np.maximum(oc, 0.0)
+    _skill_ew_q = {1: np.nan, 2: np.nan, 3: np.nan}
+    for _q in (1, 2, 3):
+        _w = _ocw ** _q
+        _wsum = _w.sum()
+        if _wsum > 0:
+            _wmean = (_w * oc).sum() / _wsum
+            _wmse = (_w * (mc - oc) ** 2).sum() / _wsum
+            _wvar = (_w * (oc - _wmean) ** 2).sum() / _wsum
+            _skill_ew_q[_q] = float(1.0 - _wmse / _wvar) if _wvar > 0 else np.nan
+    skill_ew_u1 = _skill_ew_q[1]
+    skill_ew = _skill_ew_q[2]
+    skill_ew_u3 = _skill_ew_q[3]
+
     return {
         'n': int(len(mc)),
         'bias': float(bias), 'rmse': float(rmse), 'mae': float(mae),
@@ -1702,6 +1726,8 @@ def calculate_statistics(model, obs):
         'r2': float(r2), 'nrmse': float(nrmse),
         'scatter_index': float(si),
         'rel_bias': float(rel_bias), 'skill': float(skill),
+        'skill_ew_u1': float(skill_ew_u1), 'skill_ew': float(skill_ew),
+        'skill_ew_u3': float(skill_ew_u3),
         'model_mean': float(np.mean(mc)), 'obs_mean': float(obs_mean),
         'model_std': float(np.std(mc)), 'obs_std': float(obs_std),
     }
@@ -1748,7 +1774,8 @@ def _stats_text(st):
             f"NRMSE = {st.get('nrmse', np.nan):.3f}\n"
             f"SI = {st['scatter_index']:.3f}\n"
             f"Rel Bias = {st.get('rel_bias', np.nan):.3f}\n"
-            f"Skill = {st.get('skill', np.nan):.3f}")
+            f"Skill = {st.get('skill', np.nan):.3f}\n"
+            f"Skill(EW) = {st.get('skill_ew', np.nan):.3f}")
 
 
 def _safe_filename(s):
@@ -3319,6 +3346,7 @@ def main():
         # Aggregated mean rows: overall + per source group, per (model, variable)
         numeric_cols = ['n', 'bias', 'rmse', 'mae', 'corr', 'r2', 'nrmse',
                         'scatter_index', 'rel_bias', 'skill',
+                        'skill_ew_u1', 'skill_ew', 'skill_ew_u3',
                         'model_mean', 'obs_mean', 'model_std', 'obs_std']
 
         def _mean_row(sub, label, **extra):
@@ -3345,7 +3373,7 @@ def main():
 
         # Print summary table (overall mean rows only)
         display_cols = ['model', 'variable', 'source', 'n', 'bias', 'rmse', 'mae',
-                        'corr', 'r2', 'nrmse', 'scatter_index', 'rel_bias', 'skill']
+                        'corr', 'r2', 'nrmse', 'scatter_index', 'rel_bias', 'skill', 'skill_ew']
         display_cols = [c for c in display_cols if c in df_agg.columns]
         print("\n  === Mean skill metrics across ALL stations ===")
         print(df_agg[df_agg['source'] == 'ALL'][display_cols]

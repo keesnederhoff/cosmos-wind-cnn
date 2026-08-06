@@ -71,6 +71,21 @@ class NetCDFPreprocessor:
 
             # Use chunks='auto' for dask lazy loading
             ds = xr.open_dataset(filepath, chunks='auto')
+
+            # Defensive: delivered files are sometimes bad concatenations of
+            # download chunks, carrying duplicate timestamps and backward jumps
+            # at the seams. Observed 2026-08-06 in three ERA5 files (wind_gust,
+            # friction_velocity, surface_latent_heat_flux): 144 duplicate stamps
+            # and 12 backward -11 h jumps each.
+            #
+            # This is silent by construction: _find_common_times collapses
+            # duplicates through set(), so the intersection looks fine. The
+            # damage lands downstream -- .sel(time=common_times) against a
+            # duplicated axis returns MORE rows than requested, and the
+            # regular_time_grid reindex mis-associates values across a backward
+            # jump. Normalising here is a no-op for well-formed inputs.
+            ds = self._ensure_monotonic_time(ds, var_name)
+
             raw_datasets[var_name] = ds
 
             # Get the actual variable name in the file
@@ -180,6 +195,43 @@ class NetCDFPreprocessor:
         print(f"  Time points: {len(combined.time)}")
 
         return combined
+
+    @staticmethod
+    def _ensure_monotonic_time(ds: xr.Dataset, var_name: str = "") -> xr.Dataset:
+        """Sort the time axis and drop duplicate stamps, keeping the first.
+
+        Returns `ds` untouched when the axis is already strictly increasing, so
+        clean inputs pay nothing and stay bit-identical. Statics (no time dim)
+        pass straight through.
+        """
+        tname = None
+        for cand in ('time', 'valid_time', 'Time', 'datetime'):
+            if cand in ds.dims and cand in ds.coords:
+                tname = cand
+                break
+        if tname is None:
+            return ds
+
+        t = ds[tname].values
+        if t.size < 2:
+            return ds
+
+        n_dup = int(t.size - np.unique(t).size)
+        monotonic = bool(np.all(t[1:] > t[:-1]))
+        if n_dup == 0 and monotonic:
+            return ds
+
+        ds = ds.sortby(tname)
+        t_sorted = ds[tname].values
+        # np.unique on a sorted axis returns first-occurrence indices directly.
+        _, first_idx = np.unique(t_sorted, return_index=True)
+        ds = ds.isel({tname: np.sort(first_idx)})
+
+        print(f"    [time-axis repair] {var_name}: {t.size} -> "
+              f"{ds.sizes[tname]} steps "
+              f"({n_dup} duplicate stamp(s) dropped"
+              f"{', axis re-sorted' if not monotonic else ''})")
+        return ds
 
     @staticmethod
     def _reindex_regular_hourly(ds: xr.Dataset) -> xr.Dataset:
