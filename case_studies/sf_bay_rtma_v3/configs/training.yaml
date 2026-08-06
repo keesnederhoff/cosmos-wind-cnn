@@ -1,0 +1,127 @@
+# SF Bay RTMA v3 — Training Configuration (probabilistic wind head)
+#
+# WHY A DISTRIBUTIONAL HEAD: every deterministic flavour built so far
+# under-predicts peaks (std_ratio 0.76-0.83, negative top-decile skill for every
+# CNN product). Under MSE/MAE the optimal prediction is the CONDITIONAL MEAN
+# given a 31 km ERA5 input; that distribution is wide and its mean is
+# systematically less extreme than the truth, so the shrinkage is structural.
+# This config predicts a distribution instead, and puts the tail emphasis on the
+# QUANTILE axis where it stays a PROPER scoring rule.
+#
+# Defaults here are the P0 baseline arm. Predictor blocks are selected per run
+# with SWEEP_ADD_INPUTS (which must also be set at inference).
+
+hr_source: RTMA
+lr_source: ERA5
+
+# ── Variable pairs ────────────────────────────────────────────────────────────
+# NAMING IS LOad-BEARING. parse_variable_config detects wind pairs with
+# `'wind' in key`, then splits them by `'u' in name` / `'v' in name`. A pair
+# keyed `wind_gust` would match BOTH 'wind' and 'u' (in "gUst") and silently
+# corrupt the u/v pairing -- so the gust pair is keyed plain `gust`, which the
+# heuristic correctly ignores. The quantile head does not rely on that
+# heuristic at all: it locates the gust target by name (gust_target below).
+variable_pairs:
+  wind_u:
+    high_res: 'hr_u'
+    low_res: 'lr_u'
+  wind_v:
+    high_res: 'hr_v'
+    low_res: 'lr_v'
+  gust:
+    high_res: 'hr_gust'
+    low_res: 'lr_gust'
+
+# P0 baseline extra inputs. Blocks P1-P5 are added per-arm via SWEEP_ADD_INPUTS.
+additional_inputs:
+  - 'lr_cloud'
+  - 'static_terrain'
+
+# ── Probabilistic head ────────────────────────────────────────────────────────
+# 'det' reproduces the original deterministic model bit-for-bit (used by the C1
+# and C2 control arms); 'quantile' switches on the distributional head.
+head: 'quantile'
+
+# Midpoint grid tau_k = (k-0.5)/n. 19 makes `2 * mean_k pinball_k` an estimator
+# of CRPS accurate to 5e-4 relative (verified against the analytic Gaussian
+# CRPS); it converges to 3e-9 at n=20000 if ever needed.
+n_quantiles: 19
+n_gust_quantiles: 9
+
+# Which output/input the head treats as the gust quantity, and what the speed
+# and direction anchors are. The head anchors on the interpolated ERA5 field so
+# it learns a CORRECTION -- the same idea as residual_learning, which is why the
+# two are mutually exclusive and raise if both are set.
+gust_target: 'hr_gust'
+gust_input:  'lr_gust'
+anchor_u:    'lr_u'
+anchor_v:    'lr_v'
+
+# ── Loss ──────────────────────────────────────────────────────────────────────
+# loss_qw_exp is THE tail dial: w(tau) ∝ tau**a on the quantile axis.
+#   a = 0  -> plain CRPS.
+#   a > 0  -> emphasis on the upper tail, STILL PROPER, because the objective is
+#             separable across quantile levels: w_k rescales each term's
+#             gradient but cannot move its minimiser.
+# Contrast with the old sample-weighted levers (loss_delta, loss_wave_weight),
+# which are improper and bias every quantile. Measured on synthetic wind data:
+#   quantile-weighted a=3 -> median error +0.0001 m/s
+#   sample-weighted  U^3  -> median error +3.84   m/s
+# That bias is the mechanism behind the previously measured all-hours collapse
+# (0.209 -> 0.096 -> -0.001 as the old lever was turned up).
+loss_qw_exp: 2.0
+
+# Direction term, weighted by the TRUE speed: the direction of a 0.5 m/s wind is
+# noise, and only the direction of energetic winds sets fetch. Direction is
+# already this model's strongest result (57.7 deg vs RTMA 59.2) -- do not regress it.
+loss_gamma: 0.3
+
+# Auxiliary gust task.
+loss_gust_weight: 0.2
+
+# Storm threshold for the twCRPS SELECTION metric and the reported extreme block.
+loss_extreme_threshold: 10.0
+
+# ── Legacy loss knobs — all OFF under the quantile head ────────────────────────
+# Retained so the deterministic control arms (SWEEP_HEAD=det) stay bit-identical
+# to the v2 baseline.
+loss_alpha: 1.0
+loss_beta: 0.5
+loss_nonwind_weight: 0.0
+loss_delta: 0.0
+loss_wave_weight: 0.0
+loss_wave_exp: 2.0
+loss_wave_scale: 10.0
+
+# ── Architecture ──────────────────────────────────────────────────────────────
+# bc24 / sl6 / dropout 0.0 / lr 3e-4 were the best-performing settings in the v2
+# factorial. residual_learning MUST stay false: the quantile head already
+# anchors on ERA5, and enabling both raises.
+base_channels: 24
+sequence_length: 6
+forecast_horizon: 0
+dropout_rate: 0.0
+residual_learning: false
+
+# ── Training ──────────────────────────────────────────────────────────────────
+batch_size: 32
+num_epochs: 200
+learning_rate: 0.0003
+weight_decay: 0.001
+num_workers: 8
+
+load_in_memory: false
+use_memmap: true
+train_stride: 1
+val_stride: 6
+
+scheduler_patience: 5
+scheduler_factor: 0.5
+
+# v2 runs peaked by epoch 3-10 then burned ~20 flat epochs to expire patience.
+# Selection now tracks twCRPS, which should be less noisy than val_loss was, but
+# keep patience generous until that is confirmed on real data.
+early_stopping_patience: 20
+save_every: 10
+
+crs: 'EPSG:32610'

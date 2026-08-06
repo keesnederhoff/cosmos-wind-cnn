@@ -1,0 +1,148 @@
+# SF Bay RTMA v3 — Inference Preprocessing Configuration
+#
+# Regrid the coarse ERA5 predictors onto the RTMA target grid for inference.
+# The model's targets are RTMA, but its inputs are always the coarse fields.
+#
+# MUST stay a superset of every predictor block: step_inference builds
+# xr.Dataset(regridded_vars)[input_vars], so any channel an arm was trained with
+# has to resolve here or inference aborts. Channels not in a given arm's
+# input_vars are regridded then dropped (minor wasted work, no error).
+#
+# The *_dedup / *_filled suffixes are load-bearing — see preprocessing.yaml.
+
+sources:
+  # ── P0 baseline ─────────────────────────────────────────────────────────────
+  lr_u:
+    file: 'ERA5_eastward_wind_1940_2026_UTM.nc'
+    source_var: null
+  lr_v:
+    file: 'ERA5_northward_wind_1940_2026_UTM.nc'
+    source_var: null
+  lr_cloud:
+    file: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
+    source_var: null
+  lr_gust:
+    file: 'ERA5_wind_gust_2014_2026_UTM_dedup_filled.nc'
+    source_var: null
+
+  # ── P1 flow above the surface layer ─────────────────────────────────────────
+  lr_u100:
+    file: 'ERA5_eastward_wind_100m_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_v100:
+    file: 'ERA5_northward_wind_100m_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_u925:
+    file: 'ERA5_eastward_wind_925hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_v925:
+    file: 'ERA5_northward_wind_925hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_u850:
+    file: 'ERA5_eastward_wind_850hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_v850:
+    file: 'ERA5_northward_wind_850hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+
+  # ── P2 stability and mixing depth ───────────────────────────────────────────
+  lr_skint:
+    file: 'ERA5_skin_temperature_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_t925:
+    file: 'ERA5_air_temperature_925hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_blh:
+    file: 'ERA5_boundary_layer_height_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_slhf:
+    file: 'ERA5_surface_latent_heat_flux_2014_2026_UTM_dedup_filled.nc'
+    source_var: null
+
+  # ── P3 surface turbulence ───────────────────────────────────────────────────
+  lr_ustar:
+    file: 'ERA5_friction_velocity_2014_2026_UTM_dedup_filled.nc'
+    source_var: null
+  lr_z0:
+    file: 'ERA5_forecast_surface_roughness_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_cape:
+    file: 'ERA5_convective_available_potential_energy_2014_2026_UTM_filled.nc'
+    source_var: null
+
+  # ── P4 synoptic pressure gradient ───────────────────────────────────────────
+  lr_mslp:
+    file: 'ERA5_mean_sea_level_pressure_2014_2026_UTM_filled.nc'
+    source_var: null
+  lr_z925:
+    file: 'ERA5_geopotential_925hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_z850:
+    file: 'ERA5_geopotential_850hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+  lr_z500:
+    file: 'ERA5_geopotential_500hPa_2015_2025_UTM_filled.nc'
+    source_var: null
+
+  # ── High-res statics (regridded with regrid_static, broadcast over time) ────
+  static_terrain:
+    file: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
+    source_var: null
+  static_dhdx:
+    file: 'RTMA_SFbay_2p5km_static_dhdx_static_UTM10.nc'
+    source_var: null
+  static_dhdy:
+    file: 'RTMA_SFbay_2p5km_static_dhdy_static_UTM10.nc'
+    source_var: null
+  static_landsea:
+    file: 'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
+    source_var: null
+  static_tpi:
+    file: 'RTMA_SFbay_2p5km_static_tpi_static_UTM10.nc'
+    source_var: null
+  static_distcoast:
+    file: 'RTMA_SFbay_2p5km_static_distcoast_static_UTM10.nc'
+    source_var: null
+
+# ERA5 10 m u/v end 2025-12-31 23:00, which caps the inferable record.
+start_date: '2020-01-01'
+end_date: '2026-01-01'
+
+interpolation_method: 'linear'
+compression_level: 1
+
+# Keep IDENTICAL to preprocessing.yaml — a mismatch would NaN-out channels at
+# inference that were fine in training.
+physical_bounds:
+  lr_u:     {min: -100, max: 100}
+  lr_v:     {min: -100, max: 100}
+  lr_gust:  {min: 0,    max: 150}
+  lr_cloud: {min: -0.1, max: 1.1}
+
+  lr_u100: {min: -150, max: 150}
+  lr_v100: {min: -150, max: 150}
+  lr_u925: {min: -150, max: 150}
+  lr_v925: {min: -150, max: 150}
+  lr_u850: {min: -150, max: 150}
+  lr_v850: {min: -150, max: 150}
+
+  lr_skint: {min: 200,     max: 350}
+  lr_t925:  {min: 200,     max: 330}
+  lr_blh:   {min: 0,       max: 8000}
+  lr_slhf:  {min: -5.0e+6, max: 5.0e+6}
+
+  lr_ustar: {min: 0, max: 5}
+  lr_z0:    {min: 0, max: 10}
+  lr_cape:  {min: 0, max: 20000}
+
+  lr_mslp: {min: 85000, max: 110000}
+  lr_z925: {min: 0,     max: 20000}
+  lr_z850: {min: 5000,  max: 25000}
+  lr_z500: {min: 40000, max: 70000}
+
+  static_terrain:   {min: -500,  max: 5000}
+  static_dhdx:      {min: -10,   max: 10}
+  static_dhdy:      {min: -10,   max: 10}
+  static_landsea:   {min: -0.1,  max: 1.1}
+  static_tpi:       {min: -2000, max: 2000}
+  static_distcoast: {min: -1,    max: 1000}

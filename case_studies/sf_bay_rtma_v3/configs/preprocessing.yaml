@@ -1,0 +1,146 @@
+# SF Bay RTMA v3 — Preprocessing Configuration
+#
+# Target: RTMA 2.5 km, 2020-01-01 -> 2026-01-01
+# Input:  ERA5 ~31 km (2026-08-06 drop), interpolated onto the RTMA grid
+#
+# WHY 2020+: RTMA target quality improves sharply after 2020 — obs-validated
+# Murphy skill 0.403 (2011-2019) vs 0.578 (2020-2025). Training on a better
+# target raises the attainable ceiling. It also halves the record, which is what
+# makes the much wider channel budget below affordable (~4.19 GB of memmap per
+# channel over 6 years vs 15).
+#
+# HARD END-DATE: ERA5 10 m u/v was NOT re-downloaded and still ends
+# 2025-12-31 23:00. RTMA now runs to 2026-07-30 and the new ERA5 surface fields
+# to 2026-07-26, but the core predictor caps the record. Extending past
+# 2026-01-01 requires re-downloading ERA5 10 m u/v only.
+#
+# FILE SUFFIXES — do not "simplify" these away:
+#   *_dedup.nc   the file had 144 duplicate timestamps + 12 backward -11 h seam
+#                jumps (scripts/fix_era5_time_axis.py).
+#   *_filled.nc  the file had a fixed NaN border at 100% of timesteps, which
+#                would silently produce a ZERO-SAMPLE training set
+#                (scripts/fill_era5_border_nan.py).
+#
+# NOTE every raw file holds exactly one data variable (verified), so
+# _identify_variable's single-variable fallback resolves the ones whose key does
+# not match its pattern table.
+
+regular_time_grid: true
+
+file_dict:
+
+  # ── TARGETS (hr_) ───────────────────────────────────────────────────────────
+  # RTMA native wind_speed was verified identical to sqrt(u^2+v^2) (max diff
+  # 0.0000, corr 1.000000), so the (speed, direction) head reparameterisation is
+  # lossless and needs no extra target file.
+  hr_u:    'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc'
+  hr_v:    'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc'
+  # Auxiliary peak-relevant target (2016+, fully covered by the 2020+ window).
+  hr_gust: 'RTMA_SFbay_2p5km_wind_gust_2016_2026_UTM10.nc'
+
+  # ── P0 baseline inputs ──────────────────────────────────────────────────────
+  lr_u:     'ERA5_eastward_wind_1940_2026_UTM.nc'
+  lr_v:     'ERA5_northward_wind_1940_2026_UTM.nc'
+  lr_cloud: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
+  # lr_gust is the low-res partner of the hr_gust pair, so parse_variable_config
+  # forces it into input_vars for EVERY arm. That is deliberate: it is the right
+  # anchor for a gust prediction, and being constant across arms it keeps the
+  # predictor-block ablation controlled. It is therefore NOT part of block P3.
+  lr_gust:  'ERA5_wind_gust_2014_2026_UTM_dedup_filled.nc'
+
+  # ── P1  flow above the surface layer ────────────────────────────────────────
+  # The classic downscaling predictor: surface wind is a modified version of the
+  # flow just above the boundary layer, and it sets SF Bay's gap/channel flow.
+  lr_u100: 'ERA5_eastward_wind_100m_2014_2026_UTM_filled.nc'
+  lr_v100: 'ERA5_northward_wind_100m_2014_2026_UTM_filled.nc'
+  lr_u925: 'ERA5_eastward_wind_925hPa_2015_2025_UTM_filled.nc'
+  lr_v925: 'ERA5_northward_wind_925hPa_2015_2025_UTM_filled.nc'
+  lr_u850: 'ERA5_eastward_wind_850hPa_2015_2025_UTM_filled.nc'
+  lr_v850: 'ERA5_northward_wind_850hPa_2015_2025_UTM_filled.nc'
+
+  # ── P2  stability and mixing depth ──────────────────────────────────────────
+  # Controls how much momentum aloft reaches 10 m. SF Bay's marine layer makes
+  # this the strongest physical candidate for the missing predictor.
+  # sea_surface_temperature is deliberately ABSENT: its NaN is a real land mask
+  # (68% of cells) and filling land with ocean temperature would be a false
+  # stability signal. skin_temperature is effectively SST over water.
+  lr_skint: 'ERA5_skin_temperature_2014_2026_UTM_filled.nc'
+  lr_t925:  'ERA5_air_temperature_925hPa_2015_2025_UTM_filled.nc'
+  lr_blh:   'ERA5_boundary_layer_height_2014_2026_UTM_filled.nc'
+  lr_slhf:  'ERA5_surface_latent_heat_flux_2014_2026_UTM_dedup_filled.nc'
+
+  # ── P3  surface turbulence ──────────────────────────────────────────────────
+  # Surface stress, ERA5's own assumed roughness (lets the network UNDO it), and
+  # convective gust potential.
+  lr_ustar: 'ERA5_friction_velocity_2014_2026_UTM_dedup_filled.nc'
+  lr_z0:    'ERA5_forecast_surface_roughness_2014_2026_UTM_filled.nc'
+  lr_cape:  'ERA5_convective_available_potential_energy_2014_2026_UTM_filled.nc'
+
+  # ── P4  synoptic pressure gradient ──────────────────────────────────────────
+  # The pressure gradient IS the forcing; geopotential thickness carries it aloft.
+  lr_mslp: 'ERA5_mean_sea_level_pressure_2014_2026_UTM_filled.nc'
+  lr_z925: 'ERA5_geopotential_925hPa_2015_2025_UTM_filled.nc'
+  lr_z850: 'ERA5_geopotential_850hPa_2015_2025_UTM_filled.nc'
+  lr_z500: 'ERA5_geopotential_500hPa_2015_2025_UTM_filled.nc'
+
+  # ── High-res statics (P5) ───────────────────────────────────────────────────
+  # Verified reusable: the new surface_height_static is byte-identical (md5
+  # d87e8f70...) to the one these were derived from. Statics have no time dim so
+  # they are excluded from _find_common_times and CANNOT shift the split.
+  static_terrain:   'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
+  static_dhdx:      'RTMA_SFbay_2p5km_static_dhdx_static_UTM10.nc'
+  static_dhdy:      'RTMA_SFbay_2p5km_static_dhdy_static_UTM10.nc'
+  static_landsea:   'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
+  static_tpi:       'RTMA_SFbay_2p5km_static_tpi_static_UTM10.nc'
+  static_distcoast: 'RTMA_SFbay_2p5km_static_distcoast_static_UTM10.nc'
+
+start_date: '2020-01-01'
+end_date: '2026-01-01'
+
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15
+compression_level: 1
+
+# ── Physical bounds (values outside [min, max] -> NaN) ────────────────────────
+# Permissive on purpose. Out-of-bounds values become NaN, and a NaN anywhere in
+# a window drops that window; for a time-constant channel it would drop EVERY
+# window. Ranges below comfortably bracket the audited 2020+ min/max.
+physical_bounds:
+  hr_u:    {min: -100, max: 100}
+  hr_v:    {min: -100, max: 100}
+  hr_gust: {min: 0,    max: 150}
+
+  lr_u:     {min: -100, max: 100}
+  lr_v:     {min: -100, max: 100}
+  lr_gust:  {min: 0,    max: 150}
+  lr_cloud: {min: -0.1, max: 1.1}
+
+  lr_u100: {min: -150, max: 150}
+  lr_v100: {min: -150, max: 150}
+  lr_u925: {min: -150, max: 150}
+  lr_v925: {min: -150, max: 150}
+  lr_u850: {min: -150, max: 150}
+  lr_v850: {min: -150, max: 150}
+
+  lr_skint: {min: 200,     max: 350}
+  lr_t925:  {min: 200,     max: 330}
+  lr_blh:   {min: 0,       max: 8000}
+  lr_slhf:  {min: -5.0e+6, max: 5.0e+6}
+
+  lr_ustar: {min: 0, max: 5}
+  lr_z0:    {min: 0, max: 10}
+  lr_cape:  {min: 0, max: 20000}
+
+  lr_mslp: {min: 85000, max: 110000}
+  lr_z925: {min: 0,     max: 20000}
+  lr_z850: {min: 5000,  max: 25000}
+  lr_z500: {min: 40000, max: 70000}
+
+  # Derived statics — gradients MUST be allowed to go negative.
+  static_terrain:   {min: -500,  max: 5000}
+  static_dhdx:      {min: -10,   max: 10}
+  static_dhdy:      {min: -10,   max: 10}
+  static_landsea:   {min: -0.1,  max: 1.1}
+  static_tpi:       {min: -2000, max: 2000}
+  static_distcoast: {min: -1,    max: 1000}
