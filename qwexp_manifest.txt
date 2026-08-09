@@ -1,0 +1,25 @@
+# Phase 6a: qw_exp mechanism test. Same columns as qhead_manifest.txt.
+#
+# QUESTION: all 18 quantile arms selected their best checkpoint at epoch 0-1,
+# while the 3 deterministic controls -- identical data, architecture and channels
+# -- ran to epoch ~13. So the early peak is OBJECTIVE-SPECIFIC, not data-size.
+# Two mechanisms remain, and they make opposite predictions:
+#
+#   (1) the head calibrates almost immediately (anchored on ERA5, std_ratio 0.97
+#       at epoch 1) and then over-sharpens  -> peak epoch is INSENSITIVE to qw_exp
+#   (2) loss_qw_exp=2.0 destabilises the tail so twCRPS degrades while the median
+#       still improves                      -> qw_exp=0 (plain CRPS) trains LONGER
+#
+# Everything except qw_exp is held at the P0 baseline. qw_exp=2.0 is NOT repeated
+# here: qh_P0_s1/s2/s3 from the main campaign already provide that third point on
+# bit-identical data, so re-running it would only burn GPU hours.
+#
+# Read the VERDICT off the selected epoch, not off twCRPS: the epoch signal was
+# unanimous (18/18 vs 3/3), whereas block skill differences drowned in seed noise.
+
+qw0_P0_s1  quantile  0.0  0.2  lr_cloud,static_terrain
+qw0_P0_s2  quantile  0.0  0.2  lr_cloud,static_terrain
+qw0_P0_s3  quantile  0.0  0.2  lr_cloud,static_terrain
+qw1_P0_s1  quantile  1.0  0.2  lr_cloud,static_terrain
+qw1_P0_s2  quantile  1.0  0.2  lr_cloud,static_terrain
+qw1_P0_s3  quantile  1.0  0.2  lr_cloud,static_terrain
