@@ -370,3 +370,43 @@ MODEL_COLORS['RTMA-SFbay'] = 'tab:cyan'
 # RH derived from dewpoint. CNN-windonly is deliberately left wind-only (its scalar
 # outputs are untrained -> engine skips it for non-wind variables).
 _AV_FILE = MODELS['CNN-allvars']['u_file']
+
+
+# ===========================================================================
+# 2026-08-08: v3 quantile campaign -- all 21 arms (6 predictor blocks x 3 seeds
+#   + 3 deterministic controls). Inference over the HELD-OUT TEST WINDOW
+#   2025-02-06 -> 2025-12-31, written by scripts/gpu_qhead_eval.slurm.
+#
+#   Every arm writes hr_u/hr_v in physical m/s -- for the quantile arms these
+#   are the P50 speed times the predicted direction, for the deterministic
+#   controls they are the denormalised network output. That is what makes the
+#   head comparison possible at all: during training the two reported twCRPS on
+#   different scales (z-scored vs physical) and could not be compared.
+#
+#   Wind-only single-file, so no temp_file key -- same shape as CNN-wave-p2/p3.
+# ===========================================================================
+_V3_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
+                   '/sf_bay_rtma_v3/results')
+_V3_FILE = 'full_record_ERA5_20250206_20260101.nc'
+
+_V3_ARMS = (
+    [(f'V3-P{b}-s{s}', f'qh_P{b}_s{s}') for b in range(6) for s in (1, 2, 3)]
+    + [(f'V3-C1det-s{s}', f'c1_det_P0_s{s}') for s in (1, 2, 3)]
+)
+
+# One hue per block so 21 series stay readable; seeds share a hue.
+_V3_BLOCK_COLOR = {
+    'P0': '#1f77b4', 'P1': '#2ca02c', 'P2': '#ff7f0e',
+    'P3': '#d62728', 'P4': '#9467bd', 'P5': '#8c564b',
+    'C1det': '#7f7f7f',
+}
+
+V3_MODELS = []
+for _label, _run in _V3_ARMS:
+    _p = _V3_RESULTS / _run / 'output_inference' / _V3_FILE
+    MODELS[_label] = {
+        'u_file': _p, 'v_file': _p,
+        'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
+    }
+    MODEL_COLORS[_label] = _V3_BLOCK_COLOR[_label.split('-')[1]]
+    V3_MODELS.append(_label)

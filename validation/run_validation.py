@@ -56,7 +56,16 @@ MAKE_SPATIAL_MAPS = MAKE_SPATIAL   # per-station peak-event wind-field maps (VAL
 CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample if >0)
 # ===========================================================================
 
-models, tr, outdir = ERAS[ERA]
+if ERA == 'V3':
+    # v3 held-out test window. Product list is built from config.V3_MODELS so it
+    # cannot drift from what config.py actually defines, plus ERA5 and RTMA as
+    # references and the v2 production pick for continuity.
+    from config import V3_MODELS as _V3
+    models = list(_V3) + ['ERA5', 'RTMA-SFbay', 'CNN-wave-p3-BC']
+    tr = ('2025-02-06', '2026-01-01')
+    outdir = 'v3_test_2025'
+else:
+    models, tr, outdir = ERAS[ERA]
 _vm = os.environ.get('VAL_MODELS')
 if _vm:
     models = [m.strip() for m in _vm.split(',') if m.strip()]
