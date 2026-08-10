@@ -233,7 +233,23 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     interp_method = inf_config.get('interpolation_method', 'linear')
     regridder = Regridder.from_reference_grid(ref_grid_path, method=interp_method)
 
-    sources = inf_config['sources']
+    # Only regrid what this checkpoint actually consumes. Every declared source
+    # used to be loaded and its time axis intersected with the rest, so an
+    # UNUSED variable with a shorter record silently truncated the window: the
+    # ERA5 pressure-level files start 2015-01-01 and collapsed a 2014 run to 24
+    # hours while still exiting 0.
+    _all_sources = inf_config['sources']
+    _needed = set(input_vars)
+    sources = {k: v for k, v in _all_sources.items() if k in _needed}
+    _skipped = [k for k in _all_sources if k not in sources]
+    if _skipped:
+        print(f"    Skipping {len(_skipped)} source(s) unused by this checkpoint: "
+              f"{', '.join(_skipped)}")
+    _missing = [v for v in input_vars if v not in sources]
+    if _missing:
+        raise KeyError(
+            f"inference_preprocessing.yaml declares no source for required "
+            f"input(s): {_missing}")
     physical_bounds = inf_config.get('physical_bounds', {})
 
     regridded_vars = {}   # time-varying inputs -> (time, y, x)
@@ -274,6 +290,22 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     if not common_times:
         raise RuntimeError("No overlapping timesteps across source files.")
     print(f"\n    Common timesteps: {len(common_times)}")
+
+    # Fail loudly on a short window. Silent truncation has produced a 12-hour
+    # "12-year" file once already; partial coverage must be opted into.
+    if start_date and end_date:
+        _exp = int((np.datetime64(end_date, 'h') - np.datetime64(start_date, 'h'))
+                   / np.timedelta64(1, 'h'))
+        _cov = len(common_times) / max(_exp, 1)
+        print(f"    Requested {start_date} -> {end_date} = {_exp} h; "
+              f"sources cover {len(common_times)} ({_cov:.1%})")
+        if _cov < 0.95 and not os.environ.get('ALLOW_PARTIAL_INFERENCE'):
+            _spans = {k: (str(v.time.values[0])[:13], str(v.time.values[-1])[:13],
+                          int(v.time.size)) for k, v in regridded_vars.items()}
+            raise RuntimeError(
+                f"Source coverage {_cov:.1%} of the requested window is below 95%. "
+                f"Per-variable spans: {_spans}. Set ALLOW_PARTIAL_INFERENCE=1 to "
+                f"proceed anyway.")
 
     for var_name in regridded_vars:
         regridded_vars[var_name] = regridded_vars[var_name].sel(time=common_times)
