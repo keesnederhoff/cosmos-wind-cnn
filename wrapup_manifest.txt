@@ -63,3 +63,14 @@ c2b_det_s1     det       0.0  0.0  0.0  0.001  longdata  sf_bay_rtma_long  lr_cl
 c2b_det_s2     det       0.0  0.0  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
 ql_s1          quantile  1.0  0.2  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
 ql_s2          quantile  1.0  0.2  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
+
+# --- r1 recipe, seeds 2 and 3 (day 2) ----------------------------------------
+# dropout 0.1 is the day-1 pick on the STABLE metric: speed_pinball 0.2949 vs
+# 0.3015 undropped, with the optimum pushed from epoch 3 to epoch 7 and training
+# surviving 30 epochs instead of 21. It is NOT the pick on single-epoch twCRPS
+# (r0 scored 0.0695 there) -- but that number landed at epoch 1 on a metric that
+# swings +-14% between epochs, so it is tail luck, not a better model. These two
+# seeds settle the choice against seed noise, which has out-argued every
+# architectural effect measured in this project so far.
+r1b_do010_s2   quantile  1.0  0.2  0.1  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+r1b_do010_s3   quantile  1.0  0.2  0.1  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain

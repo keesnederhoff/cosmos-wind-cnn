@@ -378,6 +378,14 @@ def main():
                        'gust': 'gust_pinball'}
     _head_best = {k: float('inf') for k in _HEAD_COMPONENT}
     _head_best_epoch = {k: -1 for k in _HEAD_COMPONENT}
+    # Smoothed selection. See the module docstring of the day-2 patch: the
+    # single-epoch twCRPS swings ~2.5x harder than speed_pinball on the same
+    # batch, so best_model.pth is partly selecting tail luck. best_smooth.pth
+    # selects on a 3-epoch running mean instead. Write-only -- it does not touch
+    # patience, the scheduler, or best_model.pth.
+    _sel_window = []
+    _smooth_best = float('inf')
+    _smooth_best_epoch = -1
     patience_counter = 0
     epoch_times = []
     training_start_time = time.time()
@@ -509,6 +517,29 @@ def main():
         else:
             patience_counter += 1
 
+        # --- all ranks track the smoothed selection value (selection_value is
+        # --- already reduced, so every rank computes the same mean).
+        _sel_window.append(selection_value)
+        if len(_sel_window) > 3:
+            _sel_window.pop(0)
+        _smooth = sum(_sel_window) / len(_sel_window)
+        if is_main and _smooth < _smooth_best:
+            _smooth_best = _smooth
+            _smooth_best_epoch = epoch
+            _raw_s = model.module if isinstance(model, DDP) else model
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': _raw_s.state_dict(),
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+                'selection_metric': _smooth,
+                'selection_metric_name': 'twcrps_mean3' if _is_quantile else 'val_loss_mean3',
+                'selection_window': list(_sel_window),
+                'val_metrics': val_metrics,
+                'config': config,
+            }, checkpoint_dir / 'best_smooth.pth')
+            print(f"  Saved best_smooth.pth (3-epoch mean: {_smooth:.4f})")
+
         # --- rank 0: per-head checkpoints. Selection artefacts only; these do
         # --- not participate in early stopping or LR scheduling.
         if is_main and _head_vals:
@@ -571,6 +602,9 @@ def main():
         print("Training Complete!")
         print("=" * 70)
         print(f"Best validation loss: {best_val_loss:.4f}")
+        if _smooth_best_epoch >= 0:
+            print(f"Best smoothed (3-epoch mean): {_smooth_best:.4f} "
+                  f"at epoch {_smooth_best_epoch + 1}")
         for _hname in _HEAD_COMPONENT:
             if _head_best_epoch[_hname] >= 0:
                 print(f"Best {_hname:9s} ({_HEAD_COMPONENT[_hname]}): "
