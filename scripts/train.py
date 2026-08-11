@@ -128,7 +128,8 @@ def main():
                               ('SWEEP_HEAD', 'head', str),
                               ('SWEEP_N_QUANTILES', 'n_quantiles', int),
                               ('SWEEP_QW_EXP', 'loss_qw_exp', float),
-                              ('SWEEP_GUST_WEIGHT', 'loss_gust_weight', float)]:
+                              ('SWEEP_GUST_WEIGHT', 'loss_gust_weight', float),
+                              ('SWEEP_WEIGHT_DECAY', 'weight_decay', float)]:
         if os.environ.get(_env):
             config[_key] = _cast(os.environ[_env])
     if is_main:
@@ -137,6 +138,8 @@ def main():
         print(f"  Effective: base_channels={config['base_channels']}, "
               f"sequence_length={config['sequence_length']}, "
               f"dropout_rate={config['dropout_rate']}, learning_rate={config['learning_rate']}, "
+              f"weight_decay={config.get('weight_decay')}, "
+              f"loss_qw_exp={config.get('loss_qw_exp')}, "
               f"residual_learning={config.get('residual_learning', False)}")
         print(f"  Effective additional_inputs: {config.get('additional_inputs')}")
         print(f"  Optimization goal: {_goal} (loss_nonwind_weight={_nww})")
@@ -363,6 +366,18 @@ def main():
         print("=" * 70)
 
     best_val_loss = float('inf')
+    # Per-head checkpoint selection. The three heads do not peak at the same
+    # epoch: on qh_P0_s1 speed_pinball minimised at ep1 and gust_pinball around
+    # ep6, while direction_loss improved monotonically all the way to ep21
+    # (0.0811 -> 0.0630). One checkpoint selected on speed-twCRPS therefore
+    # ships a direction field ~20% worse than the same run already produced.
+    # best_model.pth keeps its existing selection so nothing already published
+    # shifts; these are additional artefacts, and they never touch patience.
+    _HEAD_COMPONENT = {'speed': 'speed_pinball',
+                       'direction': 'direction_loss',
+                       'gust': 'gust_pinball'}
+    _head_best = {k: float('inf') for k in _HEAD_COMPONENT}
+    _head_best_epoch = {k: -1 for k in _HEAD_COMPONENT}
     patience_counter = 0
     epoch_times = []
     training_start_time = time.time()
@@ -418,6 +433,14 @@ def main():
         else:
             selection_value = val_loss
 
+        # Per-head selection values, reduced across ranks. validate() runs over a
+        # DistributedSampler subset, so rank 0's local component is a subsample;
+        # all_reduce must be called by every rank, hence outside is_main below.
+        _head_vals = {}
+        for _hname, _ckey in _HEAD_COMPONENT.items():
+            if _ckey in val_components:
+                _head_vals[_hname] = all_reduce_mean(val_components[_ckey], device)
+
         scheduler.step(selection_value)
         current_lr = optimizer.param_groups[0]['lr']
 
@@ -442,6 +465,9 @@ def main():
                 print(f"  Val P50 bias:  {val_components.get('p50_bias', float('nan')):+.4f} m/s")
                 print(f"  Val std_ratio: {val_components.get('std_ratio', float('nan')):.4f}"
                       f"   (1.0 = correctly dispersed)")
+            if _head_vals:
+                print("  Val per-head:  " + ", ".join(
+                    f"{_h}={_v:.4f}" for _h, _v in _head_vals.items()))
             if 'rmse' in val_metrics:
                 print(f"  Val RMSE:   {val_metrics['rmse']:.4f}")
             if 'mae' in val_metrics:
@@ -483,6 +509,28 @@ def main():
         else:
             patience_counter += 1
 
+        # --- rank 0: per-head checkpoints. Selection artefacts only; these do
+        # --- not participate in early stopping or LR scheduling.
+        if is_main and _head_vals:
+            _raw = model.module if isinstance(model, DDP) else model
+            for _hname, _v in _head_vals.items():
+                # NaN never compares below inf, so a NaN component simply never saves.
+                if _v < _head_best[_hname]:
+                    _head_best[_hname] = _v
+                    _head_best_epoch[_hname] = epoch
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': _raw.state_dict(),
+                        'train_loss': train_loss,
+                        'val_loss': val_loss,
+                        'selection_metric': _v,
+                        'selection_metric_name': _HEAD_COMPONENT[_hname],
+                        'val_metrics': val_metrics,
+                        'config': config,
+                    }, checkpoint_dir / f'best_{_hname}.pth')
+                    print(f"  Saved best_{_hname}.pth "
+                          f"({_HEAD_COMPONENT[_hname]}: {_v:.4f})")
+
         if is_main and (epoch + 1) % config.get('save_every', 10) == 0:
             raw_model = model.module if isinstance(model, DDP) else model
             torch.save({
@@ -523,6 +571,10 @@ def main():
         print("Training Complete!")
         print("=" * 70)
         print(f"Best validation loss: {best_val_loss:.4f}")
+        for _hname in _HEAD_COMPONENT:
+            if _head_best_epoch[_hname] >= 0:
+                print(f"Best {_hname:9s} ({_HEAD_COMPONENT[_hname]}): "
+                      f"{_head_best[_hname]:.4f} at epoch {_head_best_epoch[_hname] + 1}")
         print(f"Model saved to: {checkpoint_dir / 'best_model.pth'}")
         print(f"\nNext steps:")
         print(f"  - View logs: tensorboard --logdir {log_dir}")

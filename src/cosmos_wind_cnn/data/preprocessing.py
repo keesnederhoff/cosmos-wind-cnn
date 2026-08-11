@@ -411,24 +411,55 @@ class NetCDFPreprocessor:
         ds: xr.Dataset,
         train_ratio: float = 0.7,
         val_ratio: float = 0.15,
-        test_ratio: float = 0.15
+        test_ratio: float = 0.15,
+        split_dates: Dict = None
     ) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
         """
-        Split dataset chronologically (maintains lazy loading)
+        Split dataset chronologically (maintains lazy loading).
+
+        split_dates -- optional {'train_end': ..., 'val_end': ...}. The ratio
+        path cuts by INDEX, so two stores covering different record lengths get
+        different val/test windows: a 2014+ store at 0.7/0.15/0.15 trains to
+        ~2022.4 while a 2020+ store trains to 2024-03. Any "does more data
+        help?" control built that way confounds data volume with recency.
+        Pinning the boundaries by date holds val/test fixed so only the train
+        start moves. Absent the key, behaviour is the ratio path unchanged.
         """
         n_times = len(ds.time)
 
-        train_end = int(n_times * train_ratio)
-        val_end = int(n_times * (train_ratio + val_ratio))
+        if split_dates:
+            def _d(v):
+                # Accepts str, datetime.date or datetime.datetime -- PyYAML
+                # returns a date object for an unquoted YYYY-MM-DD.
+                return np.datetime64(str(v).replace(' ', 'T'))
+
+            t = ds.time.values
+            train_end = int(np.searchsorted(t, _d(split_dates['train_end'])))
+            val_end = int(np.searchsorted(t, _d(split_dates['val_end'])))
+            if not 0 < train_end < val_end < n_times:
+                raise ValueError(
+                    f"split_dates produce an empty or out-of-order split: "
+                    f"train_end={train_end}, val_end={val_end}, n_times={n_times}. "
+                    f"Requested {split_dates!r}; record spans {t[0]} to {t[-1]}."
+                )
+            print(f"\nDate-based split (split_dates given, ratios ignored):")
+            print(f"  train_end {split_dates['train_end']} -> index {train_end}")
+            print(f"  val_end   {split_dates['val_end']} -> index {val_end}")
+        else:
+            train_end = int(n_times * train_ratio)
+            val_end = int(n_times * (train_ratio + val_ratio))
 
         train_ds = ds.isel(time=slice(0, train_end))
         val_ds = ds.isel(time=slice(train_end, val_end))
         test_ds = ds.isel(time=slice(val_end, None))
 
         print(f"\nDataset split:")
-        print(f"  Train: {len(train_ds.time)} timesteps")
-        print(f"  Val:   {len(val_ds.time)} timesteps")
-        print(f"  Test:  {len(test_ds.time)} timesteps")
+        print(f"  Train: {len(train_ds.time)} timesteps  "
+              f"[{train_ds.time.values[0]} .. {train_ds.time.values[-1]}]")
+        print(f"  Val:   {len(val_ds.time)} timesteps  "
+              f"[{val_ds.time.values[0]} .. {val_ds.time.values[-1]}]")
+        print(f"  Test:  {len(test_ds.time)} timesteps  "
+              f"[{test_ds.time.values[0]} .. {test_ds.time.values[-1]}]")
 
         return train_ds, val_ds, test_ds
 

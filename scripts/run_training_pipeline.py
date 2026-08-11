@@ -100,6 +100,7 @@ def step_preprocess(case_dir, run_dirs):
         train_ratio=config.get('train_ratio', 0.7),
         val_ratio=config.get('val_ratio', 0.15),
         test_ratio=config.get('test_ratio', 0.15),
+        split_dates=config.get('split_dates'),
     )
 
     # Save splits

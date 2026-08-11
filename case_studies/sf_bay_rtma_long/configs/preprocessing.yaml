@@ -1,0 +1,68 @@
+# SF Bay RTMA â€” LONG-RECORD store for the C2b / QL data-volume controls.
+#
+# WHY: every quantile arm in the P0-P5 campaign selected best_model.pth at epoch
+# 0 or 1 of 21. One candidate cause is data volume -- the 2020+ window gives
+# T=36,825 against T=92,047 for the 2011+ v2 store. This store tests that with
+# everything else held fixed.
+#
+# WHY 2016 AND NOT 2014. The plan said 2014-01-01, on the basis that lr_gust
+# (ERA5) starts 2013-12-31. But the RTMA TARGET gust file starts 2016-01-01, and
+# _find_common_times intersects, so a 2014 start would either silently truncate
+# to 2016 or force dropping the gust task. Dropping it would make QL structurally
+# different from the campaign arms it exists to be compared against -- the
+# comparison is the entire point. 2016+ keeps the gust task and still gives
+# ~87,672 hours, 2.4x the 2020+ store.
+#
+# WHY split_dates AND NOT RATIOS. create_train_val_test_split cuts by INDEX, so
+# this store at 0.7/0.15/0.15 would train to ~2022.7 while the 2020+ store trains
+# to 2024-03-13. Any "does more data help?" answer read off that would confound
+# volume with recency. These dates are the 2020+ store's exact boundaries, so
+# val and test are the SAME WINDOWS and only the train start moves earlier.
+#
+# P0 CHANNELS ONLY. No predictor block beat P0 by more than seed noise across
+# the 28-arm campaign (P0 at 4 channels ties P5 at 26), and the pressure-level
+# files start 2015-01-01 anyway. 8 channels x ~7.0 GB = ~56 GB.
+
+regular_time_grid: true
+
+file_dict:
+  # â”€â”€ Targets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  hr_u:    'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc'
+  hr_v:    'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc'
+  hr_gust: 'RTMA_SFbay_2p5km_wind_gust_2016_2026_UTM10.nc'   # <- sets the 2016 floor
+
+  # â”€â”€ P0 inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  lr_u:     'ERA5_eastward_wind_1940_2026_UTM.nc'
+  lr_v:     'ERA5_northward_wind_1940_2026_UTM.nc'
+  lr_cloud: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
+  lr_gust:  'ERA5_wind_gust_2014_2026_UTM_dedup_filled.nc'
+
+  static_terrain: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
+
+start_date: '2016-01-01'
+end_date: '2026-01-01'
+
+# Ratios are ignored when split_dates is present; kept so the config still reads
+# sensibly and so removing split_dates falls back to the documented default.
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15
+
+# The 2020+ store's boundaries, to the hour.
+split_dates:
+  train_end: '2024-03-14'
+  val_end:   '2025-02-06'
+
+compression_level: 1
+
+physical_bounds:
+  hr_u:    {min: -100, max: 100}
+  hr_v:    {min: -100, max: 100}
+  hr_gust: {min: 0,    max: 150}
+
+  lr_u:     {min: -100, max: 100}
+  lr_v:     {min: -100, max: 100}
+  lr_gust:  {min: 0,    max: 150}
+  lr_cloud: {min: -0.1, max: 1.1}
+
+  static_terrain: {min: -500, max: 5000}

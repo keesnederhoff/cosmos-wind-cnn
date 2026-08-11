@@ -1,3 +1,28 @@
+# SF Bay RTMA â€” C2a control: deterministic head, P0 predictors, 2011+ data.
+#
+# WHY THIS EXISTS. Every quantile arm selects best_model.pth at epoch 0 or 1 of
+# 21 while the deterministic control C1 selects at epoch 6-17 of 27-38. Two
+# candidate causes: regularisation (dropout 0.0, weight_decay 0.001 against a
+# 30-channel head) and data volume (T=36,825 at 2020+ vs T=92,047 at 2011+).
+# C2a holds the head and the hyperparameters fixed at C1's values and changes
+# ONLY the data store, so it separates the two. It was specified in the original
+# v3 plan and never run.
+#
+# DERIVED FROM case_studies/sf_bay_rtma_v3/configs/training.yaml -- every
+# hyperparameter below is C1's. Exactly three things differ:
+#   1. the `gust` variable pair is gone (v2data has no hr_gust/lr_gust)
+#   2. gust_target / gust_input are gone with it
+#   3. head: 'det' and loss_gust_weight: 0.0
+#
+# On (1): C1 emitted three output channels and gave the gust one zero loss
+# weight (loss_nonwind_weight: 0.0, and the `gust` pair is not detected as a
+# wind pair). The final head is a 1x1 conv, so output channels are independent
+# and a zero-weighted channel cannot influence the other two. C2a's 2-channel
+# output is therefore functionally identical to C1's minus a dead channel.
+#
+# The store is selected by the harness, not here: scripts/gpu_wrapup.slurm
+# symlinks .../sf_bay_rtma/results/v2data/data_processed into the run dir.
+#
 # SF Bay RTMA v3 — Training Configuration (probabilistic wind head)
 #
 # WHY A DISTRIBUTIONAL HEAD: every deterministic flavour built so far
@@ -28,9 +53,6 @@ variable_pairs:
   wind_v:
     high_res: 'hr_v'
     low_res: 'lr_v'
-  gust:
-    high_res: 'hr_gust'
-    low_res: 'lr_gust'
 
 # P0 baseline extra inputs. Blocks P1-P5 are added per-arm via SWEEP_ADD_INPUTS.
 additional_inputs:
@@ -40,7 +62,7 @@ additional_inputs:
 # ── Probabilistic head ────────────────────────────────────────────────────────
 # 'det' reproduces the original deterministic model bit-for-bit (used by the C1
 # and C2 control arms); 'quantile' switches on the distributional head.
-head: 'quantile'
+head: 'det'
 
 # Midpoint grid tau_k = (k-0.5)/n. 19 makes `2 * mean_k pinball_k` an estimator
 # of CRPS accurate to 5e-4 relative (verified against the analytic Gaussian
@@ -52,8 +74,6 @@ n_gust_quantiles: 9
 # and direction anchors are. The head anchors on the interpolated ERA5 field so
 # it learns a CORRECTION -- the same idea as residual_learning, which is why the
 # two are mutually exclusive and raise if both are set.
-gust_target: 'hr_gust'
-gust_input:  'lr_gust'
 anchor_u:    'lr_u'
 anchor_v:    'lr_v'
 
@@ -82,7 +102,7 @@ loss_qw_exp: 1.0
 loss_gamma: 0.3
 
 # Auxiliary gust task.
-loss_gust_weight: 0.2
+loss_gust_weight: 0.0
 
 # Storm threshold for the twCRPS SELECTION metric and the reported extreme block.
 loss_extreme_threshold: 10.0

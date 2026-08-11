@@ -1,0 +1,65 @@
+# 7-day wrap-up sweep â€” one arm per line, read by scripts/gpu_wrapup.slurm
+#
+# Columns:  RN  HEAD  QW  GUSTW  DROPOUT  WD  STORE  CASE  ADD_INPUTS
+#   RN       run name (also the results dir)
+#   HEAD     quantile | det
+#   QW       loss_qw_exp
+#   GUSTW    loss_gust_weight
+#   DROPOUT  dropout_rate
+#   WD       weight_decay  (SWEEP_WEIGHT_DECAY, added to train.py 2026-08-10)
+#   STORE    v3data (2020+, T=36,825) | v2data (2011+, T=92,047)
+#   CASE     case study directory under case_studies/
+#   ADD      additional_inputs, comma-separated, NO spaces
+#
+# THE QUESTION. Every quantile arm in the P0-P5 campaign selected best_model.pth
+# at epoch 0 or 1 of 21 -- barely trained -- while the deterministic control C1
+# selected at epoch 6-17 of 27-38. Train twCRPS fell 0.0747->0.0346 while val
+# rose 0.0704->0.0898 (2.6x gap) with the LR already decayed 3e-4 -> 4e-5. Two
+# candidate causes, and these 8 arms separate them:
+#   regularisation -> r1..r4 (dropout and weight decay)
+#   data volume    -> c2a    (same head and hyperparameters, 2.5x the data)
+#
+# BAR TO BEAT: val twCRPS 0.07044 (qh_P0_s1, the minimum of all 28 campaign
+# arms). Also watch the BEST-EPOCH INDEX: an arm that still selects at epoch 0-1
+# has not fixed anything regardless of its score.
+#
+# r0 IS NOT OPTIONAL. The campaign ran at qw_exp=2.0; Phase 6a says a=1 is
+# better. Without an a=1 arm at the campaign's regularisation, any r1-r4 gain
+# conflates the dropout/weight-decay change with the qw_exp change.
+#
+# TRAIN-ONLY. Inference is winners-only, on day 3, after a quota check.
+
+# --- r0: a=1 at the campaign's regularisation (isolates the qw_exp change) ----
+r0_base        quantile  1.0  0.2  0.0  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+
+# --- r1-r4: regularisation screen, all at a=1 --------------------------------
+r1_do010       quantile  1.0  0.2  0.1  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+r2_do020       quantile  1.0  0.2  0.2  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+r3_wd010       quantile  1.0  0.2  0.0  0.01   v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+r4_do010wd010  quantile  1.0  0.2  0.1  0.01   v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+
+# --- c2a: data-volume control, 3 seeds ---------------------------------------
+# train.py sets no manual seed, so relaunching the same config is an independent
+# draw. Three seeds because seed noise (sigma ~0.018-0.040) exceeded every
+# architectural effect measured in v2, and a 1-seed control could not settle
+# anything. Confound to state when reporting: v2data's ratio split trains to
+# ~2021.5, so c2a has both MORE data and OLDER data. The unconfounded version
+# (C2b, 2014+ with v3's exact val/test boundaries via the new split_dates key)
+# comes off the day-1 CPU preprocess.
+c2a_det_s1     det       0.0  0.0  0.0  0.001  v2data  sf_bay_rtma_c2  lr_cloud,static_terrain
+c2a_det_s2     det       0.0  0.0  0.0  0.001  v2data  sf_bay_rtma_c2  lr_cloud,static_terrain
+c2a_det_s3     det       0.0  0.0  0.0  0.001  v2data  sf_bay_rtma_c2  lr_cloud,static_terrain
+
+# --- c2b / ql: the UNCONFOUNDED long-record controls (day 2) ------------------
+# These need the longdata store from scripts/cpu_long_preprocess.slurm, so they
+# are NOT part of the day-1 array 0-7. Submit with --array=8-11 once it lands.
+#
+# longdata is 2016-01-01..2026-01-01 (T~87,672, 2.4x v3data) split with the new
+# split_dates key at v3data's EXACT boundaries (train_end 2024-03-14, val_end
+# 2025-02-06). Val and test are therefore the same windows as every 2020+ arm
+# and only the train start moves -- which is what makes this, unlike c2a, a
+# clean read on data volume rather than on recency.
+c2b_det_s1     det       0.0  0.0  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
+c2b_det_s2     det       0.0  0.0  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
+ql_s1          quantile  1.0  0.2  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
+ql_s2          quantile  1.0  0.2  0.0  0.001  longdata  sf_bay_rtma_long  lr_cloud,static_terrain
