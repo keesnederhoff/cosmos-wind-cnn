@@ -51,10 +51,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
     ap.add_argument("--nquant", type=int, default=200)
+    # Inference filename prefix. Empty reproduces the Phase 6b behaviour exactly.
+    # The wrap-up arms hold several checkpoints in one run dir, distinguished only
+    # by this prefix (speed_ for best_speed.pth), so without it the fit would
+    # silently pick up whichever checkpoint left an unprefixed file -- a
+    # different model from the one being bias-corrected.
+    ap.add_argument("--prefix", default="",
+                    help="inference filename prefix, e.g. speed_")
     args = ap.parse_args()
 
+    val_file = args.prefix + VAL_FILE
+    test_file = args.prefix + TEST_FILE
     inf_dir = os.path.join(ROOT, CASE, "results", args.run, "output_inference")
-    vp, tp = os.path.join(inf_dir, VAL_FILE), os.path.join(inf_dir, TEST_FILE)
+    vp, tp = os.path.join(inf_dir, val_file), os.path.join(inf_dir, test_file)
     for p in (vp, tp):
         if not os.path.exists(p):
             sys.exit("ABORT missing %s" % p)
@@ -92,7 +101,7 @@ def main():
     for vv in ("hr_u", "hr_v"):
         out[vv].attrs = dict(inf_test[vv].attrs,
                              bias_corrected="per-cell quantile map vs RTMA, FITTED ON VAL")
-    op = os.path.join(inf_dir, "BCVAL_%s" % TEST_FILE)
+    op = os.path.join(inf_dir, "BCVAL_%s" % test_file)
     out.to_netcdf(op, encoding={vv: {"zlib": True, "complevel": 4,
                                      "_FillValue": np.float32(np.nan)}
                                 for vv in ("hr_u", "hr_v")})

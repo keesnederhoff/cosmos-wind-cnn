@@ -389,9 +389,27 @@ _V3_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
                    '/sf_bay_rtma_v3/results')
 _V3_FILE = 'full_record_ERA5_20250206_20260101.nc'
 
+# (label, run_dir, filename). The filename became per-arm on day 3: the wrap-up
+# arms carry several checkpoints in one run dir, distinguished only by the output
+# filename prefix, so a single _V3_FILE constant would silently point every arm
+# at whichever checkpoint happened to write last.
+_RECIPE_RUNS = [('s1', 'r1_do010'), ('s2', 'r1b_do010_s2'), ('s3', 'r1b_do010_s3')]
+
 _V3_ARMS = (
-    [(f'V3-P{b}-s{s}', f'qh_P{b}_s{s}') for b in range(6) for s in (1, 2, 3)]
-    + [(f'V3-C1det-s{s}', f'c1_det_P0_s{s}') for s in (1, 2, 3)]
+    [(f'V3-P{b}-s{s}', f'qh_P{b}_s{s}', _V3_FILE)
+     for b in range(6) for s in (1, 2, 3)]
+    + [(f'V3-C1det-s{s}', f'c1_det_P0_s{s}', _V3_FILE) for s in (1, 2, 3)]
+    # The fixed shipping recipe: quantile head, dropout 0.1, wd 0.001, qw_exp 1.0,
+    # best_speed.pth (epoch 7). This is the product the obs track has to judge.
+    + [(f'V3-RECIPE-{sd}', run, f'speed_{_V3_FILE}') for sd, run in _RECIPE_RUNS]
+    # best_direction.pth (epoch 27). Grid scoring says it buys 1.1 deg of
+    # direction and costs 0.14 of storm skill; stations decide whether that
+    # trade is worth making in the shipped product.
+    + [(f'V3-DIRckpt-{sd}', run, f'direction_{_V3_FILE}') for sd, run in _RECIPE_RUNS]
+    # best_model.pth (epoch 10) on the same arm -- what the twCRPS selection rule
+    # would have shipped. One seed only: on s2/s3 best_model and best_speed both
+    # landed on epoch 7 and are identical weights.
+    + [('V3-SELRULE-s1', 'r1_do010', _V3_FILE)]
 )
 
 # One hue per block so 21 series stay readable; seeds share a hue.
@@ -399,11 +417,12 @@ _V3_BLOCK_COLOR = {
     'P0': '#1f77b4', 'P1': '#2ca02c', 'P2': '#ff7f0e',
     'P3': '#d62728', 'P4': '#9467bd', 'P5': '#8c564b',
     'C1det': '#7f7f7f',
+    'RECIPE': '#000000', 'DIRckpt': '#17becf', 'SELRULE': '#bcbd22',
 }
 
 V3_MODELS = []
-for _label, _run in _V3_ARMS:
-    _p = _V3_RESULTS / _run / 'output_inference' / _V3_FILE
+for _label, _run, _fname in _V3_ARMS:
+    _p = _V3_RESULTS / _run / 'output_inference' / _fname
     MODELS[_label] = {
         'u_file': _p, 'v_file': _p,
         'u_var': 'hr_u', 'v_var': 'hr_v', 'single_file': True,
