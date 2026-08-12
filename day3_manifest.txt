@@ -36,3 +36,18 @@ r1_do010      quantile 1.0 0.2 0.1 0.001 best_model.pth     -   lr_cloud,static_
 r1_do010      quantile 1.0 0.2 0.1 0.001 best_direction.pth 0.5 lr_cloud,static_terrain
 r1b_do010_s2  quantile 1.0 0.2 0.1 0.001 best_direction.pth 0.5 lr_cloud,static_terrain
 r1b_do010_s3  quantile 1.0 0.2 0.1 0.001 best_direction.pth 0.5 lr_cloud,static_terrain
+
+# --- day 4 follow-up: DENSE quantile grid at best_direction.pth (epoch 27) ----
+# The obs board reversed the day-3 grid verdict: epoch 27 tops the CNN field at
+# stations (pooled Murphy 0.5193 vs the epoch-7 recipe's 0.5043, both aggregations
+# agreeing) while scoring WORST on gridded storm skill (0.0350 vs 0.1750). The
+# plan's tie-break rule says obs wins, because stations are the only truth that is
+# not the training target -- but rows 4-6 wrote tau=0.5 only, so epoch 27 has no
+# calibration or storm-distribution evidence at all. It cannot be recommended as a
+# probabilistic product on a point estimate.
+#
+# These overwrite the tau=0.5 files. Safe: the dense grid is a strict superset and
+# hr_u/hr_v come from the same weights, so the day-4 obs numbers stand unchanged.
+r1_do010      quantile 1.0 0.2 0.1 0.001 best_direction.pth - lr_cloud,static_terrain
+r1b_do010_s2  quantile 1.0 0.2 0.1 0.001 best_direction.pth - lr_cloud,static_terrain
+r1b_do010_s3  quantile 1.0 0.2 0.1 0.001 best_direction.pth - lr_cloud,static_terrain

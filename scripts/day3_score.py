@@ -52,9 +52,16 @@ PRODUCTS = [
     # same weights family, twCRPS-selected checkpoint (epoch 10) -- selection cost
     ('selrule_bestmodel_s1', 'r1_do010', TEST,            'quantile'),
     # direction-selected checkpoint (epoch 27), tau=0.5 only
-    ('dir_s1',       'r1_do010',     f'direction_{TEST}', 'dironly'),
-    ('dir_s2',       'r1b_do010_s2', f'direction_{TEST}', 'dironly'),
-    ('dir_s3',       'r1b_do010_s3', f'direction_{TEST}', 'dironly'),
+    # Re-scored at the DENSE grid after the day-4 obs board reversed the
+    # day-3 grid verdict: epoch 27 tops the CNN field at stations (pooled
+    # Murphy 0.5193 vs the epoch-7 recipe's 0.5043, both aggregations
+    # agreeing) while scoring WORST on gridded storm skill (0.0350 vs
+    # 0.1750). Scored as 'quantile' so calibration is available for it too:
+    # epoch 27 cannot be recommended as a probabilistic product on the
+    # strength of a point estimate alone.
+    ('dir_s1',       'r1_do010',     f'direction_{TEST}', 'quantile'),
+    ('dir_s2',       'r1b_do010_s2', f'direction_{TEST}', 'quantile'),
+    ('dir_s3',       'r1b_do010_s3', f'direction_{TEST}', 'quantile'),
     # deterministic control -- currently the obs-track leader
     ('C1_det_s1',    'c1_det_P0_s1', TEST,                'det'),
     ('C1_det_s2',    'c1_det_P0_s2', TEST,                'det'),
