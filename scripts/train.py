@@ -522,8 +522,12 @@ def main():
         _sel_window.append(selection_value)
         if len(_sel_window) > 3:
             _sel_window.pop(0)
+        # Only a FULL window counts. With len<3 the "mean" is just epoch 0's own
+        # value, so best_smooth.pth latched onto epoch 1 on a partial window --
+        # reproducing the exact epoch-1 latch it exists to avoid (observed on
+        # r1b_do010_s2/s3, both stamped @1). Wait for three real epochs.
         _smooth = sum(_sel_window) / len(_sel_window)
-        if is_main and _smooth < _smooth_best:
+        if is_main and len(_sel_window) == 3 and _smooth < _smooth_best:
             _smooth_best = _smooth
             _smooth_best_epoch = epoch
             _raw_s = model.module if isinstance(model, DDP) else model

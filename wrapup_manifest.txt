@@ -74,3 +74,14 @@ ql_s2          quantile  1.0  0.2  0.0  0.001  longdata  sf_bay_rtma_long  lr_cl
 # architectural effect measured in this project so far.
 r1b_do010_s2   quantile  1.0  0.2  0.1  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
 r1b_do010_s3   quantile  1.0  0.2  0.1  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+
+# --- r0 recipe, seeds 2 and 3 (day 2, tie-break) ------------------------------
+# The two val metrics disagree and each is now backed by a different amount of
+# evidence. Over 3 seeds the dropout-0.1 recipe gives speed_pinball
+# 0.2947 +- 0.0017, all three peaking at epoch 7 -- reproducible, and 0.0068
+# better than r0's 0.3015 (~4 SE). But r0's single seed scored twCRPS 0.0695
+# against the r1 seeds' 0.0718 +- 0.0006, i.e. better on the metric the product
+# is actually judged on. One draw on a metric that swings +-14% is not evidence,
+# so r0 gets the same three-seed treatment before the recipe is fixed.
+r0b_base_s2    quantile  1.0  0.2  0.0  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
+r0b_base_s3    quantile  1.0  0.2  0.0  0.001  v3data  sf_bay_rtma_v3  lr_cloud,static_terrain
