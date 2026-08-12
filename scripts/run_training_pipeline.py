@@ -328,7 +328,19 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
 
     # -- Load model --
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint_path = checkpoint_dir / 'best_model.pth'
+    # Which checkpoint to run inference from. Defaults to best_model.pth so
+    # every existing result is reproduced bit-for-bit; INFER_CHECKPOINT lets the
+    # per-head artefacts (best_speed / best_direction / best_gust / best_smooth)
+    # be scored without a second code path. The name is carried into the output
+    # filename below so two checkpoints of the same run cannot overwrite one
+    # another -- a silent-overwrite trap, since the arm name is otherwise the
+    # only thing distinguishing them.
+    _ckpt_name = os.environ.get('INFER_CHECKPOINT', 'best_model.pth')
+    checkpoint_path = checkpoint_dir / _ckpt_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"INFER_CHECKPOINT={_ckpt_name} not found in {checkpoint_dir}. "
+            f"Present: {sorted(p.name for p in checkpoint_dir.glob('*.pth'))}")
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     model = build_wind3dunet(train_config, stats, input_vars, output_vars).to(device)
@@ -339,7 +351,9 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     # -- Output path + provenance attrs --
     tag_start = (start_date or str(common_times[0])[:10]).replace('-', '')
     tag_end = (end_date or str(common_times[-1])[:10]).replace('-', '')
-    output_filename = f'full_record_ERA5_{tag_start}_{tag_end}.nc'
+    _ckpt_tag = ('' if _ckpt_name == 'best_model.pth'
+                 else _ckpt_name[:-4].replace('best_', '') + '_')
+    output_filename = f'{_ckpt_tag}full_record_ERA5_{tag_start}_{tag_end}.nc'
     output_path = run_dirs['output_inference'] / output_filename
 
     attrs = {

@@ -100,7 +100,7 @@ def main():
 
     for label, path in [('Training config', train_config_path),
                         ('Inference config', inf_config_path),
-                        ('Checkpoint', checkpoint_dir / 'best_model.pth'),
+                        ('Checkpoint', checkpoint_dir / os.environ.get('INFER_CHECKPOINT', 'best_model.pth')),
                         ('Normalization stats', processed_dir / 'normalization_stats.pkl')]:
         if not path.exists():
             print(f"Error: {label} not found at {path}")
@@ -230,7 +230,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"  Device: {device}")
 
-    checkpoint = torch.load(checkpoint_dir / 'best_model.pth',
+    checkpoint = torch.load(checkpoint_dir / os.environ.get('INFER_CHECKPOINT', 'best_model.pth'),
                             map_location=device, weights_only=False)
 
     # Loaded before the model: residual mode needs the stats to build its skip affine.
@@ -265,7 +265,7 @@ def main():
             return
 
     attrs = {
-        'source_checkpoint': str(checkpoint_dir / 'best_model.pth'),
+        'source_checkpoint': str(checkpoint_dir / os.environ.get('INFER_CHECKPOINT', 'best_model.pth')),
         'checkpoint_epoch': int(checkpoint['epoch']),
         'run_name': run_name,
         'sequence_length': sequence_length,
