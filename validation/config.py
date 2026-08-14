@@ -429,3 +429,27 @@ for _label, _run, _fname in _V3_ARMS:
     }
     MODEL_COLORS[_label] = _V3_BLOCK_COLOR[_label.split('-')[1]]
     V3_MODELS.append(_label)
+
+# ---- Three-era record: the shipping recipe run over 2000-2026 -------------
+# Registered as a MULTIFILE product (data_dir + glob), not a concatenated file:
+# 27 year-segments x 3 seeds is 532 GB and the loader windows lazily to
+# TIME_RANGE anyway, so concatenating would burn ~114 GB of quota for nothing.
+#
+# The '????0101' in the pattern is load-bearing. output_inference/ also holds
+# day-3/day-5 leftovers -- speed_full_record_ERA5_20240314_20250206.nc and
+# _20250206_20260101.nc -- whose windows OVERLAP the per-year files. A looser
+# glob sorts them in lexically and hands the loader a time axis that jumps
+# backward, which the contiguous-slice window read would then silently mangle.
+# Only YYYY0101 starts are era segments. load_model_utm_multifile() also raises
+# on a backward jump now, so a future loosening fails loud instead of quietly.
+V3_ERA_MODELS = []
+for _sd, _run in _RECIPE_RUNS:
+    _lab = f'V3-ERAS-{_sd}'
+    MODELS[_lab] = {
+        'data_dir': _V3_RESULTS / _run / 'output_inference',
+        'u_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+        'v_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+        'u_var': 'hr_u', 'v_var': 'hr_v', 'crs': 'utm10n',
+    }
+    MODEL_COLORS[_lab] = {'s1': '#000000', 's2': '#555555', 's3': '#999999'}[_sd]
+    V3_ERA_MODELS.append(_lab)

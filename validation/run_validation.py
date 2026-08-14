@@ -56,7 +56,29 @@ MAKE_SPATIAL_MAPS = MAKE_SPATIAL   # per-station peak-event wind-field maps (VAL
 CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample if >0)
 # ===========================================================================
 
-if ERA == 'V3':
+# Three-era obs track (2026-08-14). The shipping recipe scored against REAL
+# observations across the two eras it never saw and the one it trained on:
+#   E1 2000-2010  pre-RTMA. No gridded truth exists here at all -- stations are
+#                 the only verification possible, which is the whole point.
+#   E2 2011-2019  RTMA exists but was never trained on. The generalisation test.
+#   E3 2020-2026  the training era (train 2020-01-01..2024-03-13, val ..2025-02-05,
+#                 test ..2025-12-31). Skill here is an UPPER BOUND, not a forecast
+#                 of skill elsewhere -- read it against E1/E2, never on its own.
+# CONUS404 ends 2021 so it references E1/E2 only; RTMA starts 2011 so it
+# references E2/E3 only. Neither is dropped silently -- each era names its own.
+# USGS moorings all start after 2020-01-22 and so can only appear in E3; run
+# them as their own group (VAL_GROUPS=usgs), never pooled into the IEM+NDBC
+# headline, because their anemometers sit at 1.2-4.9 m rather than 10 m.
+_ERA_TR = {
+    'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010', ['ERA5', 'CONUS404']),
+    'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019', ['ERA5', 'CONUS404', 'RTMA-SFbay']),
+    'E3': (('2020-01-01', '2026-07-27'), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
+}
+if ERA in _ERA_TR:
+    from config import V3_ERA_MODELS as _VE
+    tr, outdir, _refs = _ERA_TR[ERA]
+    models = list(_VE) + _refs
+elif ERA == 'V3':
     # v3 held-out test window. Product list is built from config.V3_MODELS so it
     # cannot drift from what config.py actually defines, plus ERA5 and RTMA as
     # references and the v2 production pick for continuity.

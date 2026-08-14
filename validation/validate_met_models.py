@@ -720,8 +720,31 @@ def load_model_utm_multifile(model_name, model_cfg):
             d = d.sortby('y')
         return d
 
-    ds_u = _ascending_y(xr.open_mfdataset([str(f) for f in u_files], **mf_kwargs))
-    ds_v = _ascending_y(xr.open_mfdataset([str(f) for f in v_files], **mf_kwargs))
+    def _dedupe_time(d, tag):
+        # Year-segmented inference files overlap: each ends at Y+1-01-01T23, so a
+        # naive concat repeats one day at every boundary. Duplicate time labels
+        # break the downstream reindex, and a non-monotonic axis silently
+        # corrupts the contiguous-slice time window below. Fail loud on the
+        # latter; drop repeats (keep first) for the former. No-op when clean.
+        if "time" not in d.dims:
+            return d
+        ti = pd.Index(pd.to_datetime(d["time"].values))
+        keep = ~ti.duplicated(keep="first")
+        if not keep.all():
+            print(f"    {tag}: dropped {int((~keep).sum())} duplicate timestamps "
+                  f"({len(ti)} -> {int(keep.sum())})")
+            d = d.isel(time=np.where(keep)[0])
+            ti = ti[keep]
+        if not ti.is_monotonic_increasing:
+            bad = int((np.diff(ti.values.astype("int64")) < 0).sum())
+            raise ValueError(
+                f"{tag}: time axis jumps backward at {bad} place(s) after concat. "
+                "The file glob is almost certainly picking up overlapping windows "
+                "on top of the per-year files -- tighten the pattern.")
+        return d
+
+    ds_u = _dedupe_time(_ascending_y(xr.open_mfdataset([str(f) for f in u_files], **mf_kwargs)), "u")
+    ds_v = _dedupe_time(_ascending_y(xr.open_mfdataset([str(f) for f in v_files], **mf_kwargs)), "v")
 
     ds_temp = None
     datasets = [ds_u, ds_v]
@@ -729,7 +752,7 @@ def load_model_utm_multifile(model_name, model_cfg):
         temp_files = sorted(data_dir.glob(model_cfg['temp_pattern']))
         if temp_files:
             print(f"    temp files: {len(temp_files)}")
-            ds_temp = _ascending_y(xr.open_mfdataset([str(f) for f in temp_files], **mf_kwargs))
+            ds_temp = _dedupe_time(_ascending_y(xr.open_mfdataset([str(f) for f in temp_files], **mf_kwargs)), "temp")
             datasets.append(ds_temp)
         else:
             print(f"    No temp files found — temperature will be NaN")
