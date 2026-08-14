@@ -18,7 +18,7 @@
 | head | quantile, 19 speed + 2 direction + 9 gust levels |
 | loss | quantile-weighted CRPS, `qw_exp = 1.0` |
 | regularisation | `dropout 0.1`, `weight_decay 0.001` |
-| predictors | P0 — `lr_u`, `lr_v`, `lr_cloud`, `static_terrain` |
+| predictors | P0 — `lr_u`, `lr_v`, `lr_cloud`, `static_terrain`, plus `lr_gust` (5 input channels; `lr_gust` is required by the gust target pair, not chosen as a predictor) |
 | training window | 2020+ |
 | **speed / gust product** | **`best_speed.pth`** (epoch 7), 3 seeds |
 | **direction product** | **`best_direction.pth`** (epoch 27), 3 seeds |
@@ -126,7 +126,7 @@ correction is how the shipped product recovers it.
 ## 3. Did the 27 new predictors help?
 
 **No.** Across P1–P5 at three seeds each, no predictor block beat P0 by more than seed noise.
-P0 at 4 channels ties P5 at 26. On the obs board the best non-P0 arm (`V3-P4-s3`, 0.5162 pooled)
+P0 ties P5 (4 vs 26 predictor-block channels; 5 vs 27 actual inputs). On the obs board the best non-P0 arm (`V3-P4-s3`, 0.5162 pooled)
 sits inside the recipe's seed range.
 
 Do not re-run this. The low-resolution wind field plus static terrain carries essentially all

@@ -189,7 +189,18 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
 
     # Load archived configs (from checkpoint dir for reproducibility)
     train_config = load_config(checkpoint_dir / 'training.yaml')
-    inf_config = load_config(checkpoint_dir / 'inference_preprocessing.yaml')
+    # Which inference-preprocessing config to use. Defaults to the archived copy
+    # so every existing result reproduces. INFER_CONFIG points it elsewhere.
+    #
+    # WHY THIS EXISTS: the archived config is deliberately a SUPERSET of every
+    # predictor block, and step_inference regrids ALL declared sources and
+    # intersects their time axes BEFORE selecting the ones this arm needs. The
+    # pressure-level files start 2015, so a 4-channel P0 arm -- whose own inputs
+    # go back to 1940 -- still aborts with 'No overlapping timesteps' for any
+    # year before 2015. A trimmed config restores the arm's true usable span.
+    _icfg = os.environ.get('INFER_CONFIG')
+    inf_config = load_config(Path(_icfg) if _icfg
+                             else checkpoint_dir / 'inference_preprocessing.yaml')
 
     # Apply env overrides BEFORE parsing variables: SWEEP_ADD_INPUTS changes
     # additional_inputs, which parse_variable_config turns into input channels.
@@ -846,7 +857,9 @@ def main():
 
         # Get inference period from config if not specified on CLI
         # Prefer archived copy (step 3 just put it there); fall back to configs/
-        inf_config_path = run_dirs['checkpoint'] / 'inference_preprocessing.yaml'
+        _icfg = os.environ.get('INFER_CONFIG')
+        inf_config_path = (Path(_icfg) if _icfg
+                           else run_dirs['checkpoint'] / 'inference_preprocessing.yaml')
         if not inf_config_path.exists():
             inf_config_path = case_dir / 'configs' / 'inference_preprocessing.yaml'
         inf_config = load_config(inf_config_path)

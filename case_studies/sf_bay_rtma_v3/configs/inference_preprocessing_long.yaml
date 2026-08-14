@@ -1,0 +1,61 @@
+# LONG-RECORD inference config for the shipping recipe (2000-2026).
+#
+# FIVE input channels, not four. lr_gust is dragged in by the gust variable
+# PAIR (its low_res key), not by any predictor block, so every arm carries it
+# whether or not gust is in its block. A four-channel config aborts with
+# "KeyError: no source for lr_gust".
+#
+# WHY A TRIMMED CONFIG AT ALL: step_inference regrids EVERY source declared
+# here and intersects their time axes BEFORE selecting this arm's inputs. The
+# full config is a superset of all predictor blocks and its pressure-level
+# files start 2015, so every year before 2015 aborted on "No overlapping
+# timesteps" even though these five channels reach back much further.
+#
+# FILES: the 2026-08-13 drop, which extends u/v/cloud/gust back to 2000-01-01.
+# Verified bit-identical to the old 1940_2026 files over a 2022 overlap month,
+# so inference stays consistent with what training saw.
+#
+# lr_gust uses the _filled variant: the raw 2000-2026 gust file carries the
+# same fixed 23.6%% NaN border as the 2026-08-06 drop, which would silently
+# produce a zero-sample set. u/v/cloud in this drop are already clean.
+#
+# SPAN: gust ends 2026-07-26, u/v/cloud 2026-08-01, so the intersection ends
+# 2026-07-26. RTMA truth runs to 2026-07-30, so the whole record is scoreable.
+# Use with INFER_CONFIG=<this file>.
+
+sources:
+  lr_u:
+    file: ERA5_eastward_wind_2000_2026_UTM.nc
+    source_var: null
+  lr_v:
+    file: ERA5_northward_wind_2000_2026_UTM.nc
+    source_var: null
+  lr_gust:
+    file: ERA5_wind_gust_2000_2026_UTM_filled.nc
+    source_var: null
+  lr_cloud:
+    file: ERA5_cloud_area_fraction_2000_2026_UTM.nc
+    source_var: null
+  static_terrain:
+    file: RTMA_SFbay_2p5km_surface_height_static_UTM10.nc
+    source_var: null
+start_date: '2000-01-01'
+end_date: '2026-07-27'
+interpolation_method: linear
+compression_level: 1
+physical_bounds:
+  lr_u:
+    min: -100
+    max: 100
+  lr_v:
+    min: -100
+    max: 100
+  lr_gust:
+    min: 0
+    max: 150
+  lr_cloud:
+    min: -0.1
+    max: 1.1
+  static_terrain:
+    min: -500
+    max: 5000

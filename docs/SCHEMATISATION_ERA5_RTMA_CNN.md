@@ -33,19 +33,30 @@ ceiling is RTMA's own quality (Section 9).
 
 ## 2. Inputs
 
-**Shipped predictor set ("P0"), 4 channels:**
+**Shipped predictor set ("P0"), 5 input channels:**
 
 | channel | source | role |
 |---|---|---|
 | `lr_u`, `lr_v` | ERA5 10 m eastward/northward wind | the field being downscaled |
 | `lr_cloud` | ERA5 cloud area fraction | weak synoptic-state proxy |
 | `static_terrain` | RTMA surface height | time-invariant; supplies the topographic detail ERA5 lacks |
+| `lr_gust` | ERA5 10 m wind gust | **not a chosen predictor** — see below |
+
+`lr_gust` is the trap in this table. It appears in no predictor block, so a reader counting
+the P0 *block* gets four channels; the model in fact takes five. It is pulled in by the gust
+variable **pair**, whose `low_res` key names it, and the pair is present because gust is an
+auxiliary target. The consequence is not cosmetic: an inference config built from the
+predictor list alone is missing a required input, and every run aborts. Worse, `lr_gust`
+availability then silently bounds the whole record — an inference span the predictors could
+easily support is cut short by a channel nobody chose. **Derive the input list from what the
+model actually consumes, never from the predictor block.**
 
 **Record what was tried and rejected, so it is not retried.** Five further predictor blocks
 were built and trained (P1–P5), taking the input up to 26 channels: additional single-level
 ERA5 fields, pressure-level fields, temporal derivatives, and combinations. Across an 18-arm
-campaign at three seeds each, **no block beat P0 by more than seed noise.** P0 at 4 channels
-ties P5 at 26.
+campaign at three seeds each, **no block beat P0 by more than seed noise.** P0 ties P5.
+(Those block counts, 4 through 26, are quoted on the predictor-block basis and so exclude
+the `lr_gust` channel above; P0 is 5 actual input channels, P5 is 27.)
 
 The lesson generalises: for this class of problem the low-resolution wind field plus static
 terrain carries nearly all the transferable information, and added channels mostly add
@@ -56,8 +67,8 @@ deficiency points at them.
 
 | field | availability | consequence |
 |---|---|---|
-| ERA5 10 m u/v | … – 2025-12-31 | caps the end of any inference record |
-| ERA5 wind gust | from 2013-12-31 | any gust-dependent arm starts 2014 at the earliest |
+| ERA5 10 m u/v | … – 2026-07-26 | caps the end of any inference record |
+| ERA5 wind gust | 2000-01-01 – 2026-07-26 | **was** 2013-12-31 — a download-scope choice, not an ERA5 limit |
 | RTMA wind gust (target) | from 2016-01-01 | **the binding constraint** — the gust *task* cannot start before 2016 |
 | ERA5 pressure levels | from 2015-01-01 | rules pressure-level predictors out of longer records |
 | RTMA u/v (target) | 2011 – 2026 | bounds the scoreable period |
