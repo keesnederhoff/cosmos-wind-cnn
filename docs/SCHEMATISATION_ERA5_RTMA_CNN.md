@@ -432,9 +432,22 @@ Non-negotiable: **state the convention next to every number.**
    gridded skill rewards imitating the analysis, while further training moves the model away
    from the analysis and toward the stations. This is treated as a finding, not an anomaly — see
    `CONCLUSIONS_v3.md`.
-6. **Not yet measured: generalisation to the pre-training era for the shipped recipe.** The
-   earlier campaign arms were scored on seen/unseen eras; the final recipe has been scored only
-   on the held-out test window and the validation window. This is the clearest open gap.
+6. **Generalisation backwards in time is bounded, and now measured.** Scored against stations
+   over three eras, the recipe's *added value over its own input* is identical in the training
+   era and the unseen decade before it (+0.237 vs +0.239), and falls about 29% two decades back
+   (+0.170). Report added-value-over-input, not raw skill: the input's own quality is
+   era-dependent, so raw skill conflates model degradation with input degradation.
+7. **The method does not transfer across measurement height without recalibration.** Against
+   moorings whose anemometers sit at 1.2-4.9 m rather than 10 m, the model scores 0.253 where
+   the target analysis scores 0.456, with 12x the seed spread seen at 10 m land stations. A model
+   trained to reproduce a 10 m product is a 10 m product. Score off-height sensors as their own
+   group; never pool them into a headline.
+8. **In the training era the model reaches its target's quality, not beyond it** (~99% of it).
+   Any result showing a downscaler *beating* the analysis it was trained on should be treated as
+   a window or sampling artefact until reproduced over a multi-year span — one such result in
+   this project did not survive that test. Exceeding the analysis in *other* eras is a different
+   and legitimate claim: there the model inherits the later analysis's quality and the
+   contemporaneous analysis is genuinely worse.
 
 ---
 

@@ -136,30 +136,68 @@ the transferable information for this domain.
 
 ## 4. Does it generalise?
 
-**Partially answered, and this is the clearest open gap.**
+**Yes — measured, not inferred.** The shipping recipe was run at three seeds over the full
+2000-2026 ERA5 record and scored against 41 IEM + NDBC stations in three eras. Stations are the
+only reference in this project that is not the training target, and E1 is the sharpest test
+available anywhere in the campaign: 2000-2010 predates RTMA entirely, so no gridded truth exists
+there and the model is extrapolating two decades outside its training window.
 
-What *is* established: the test window is fully held out — never trained on, never used for
-checkpoint selection, and disjoint from the bias-correction fit period. All headline numbers
-above are out-of-sample in that sense, and the three seeds agree closely (obs pooled 0.5026 /
-0.4973 / 0.5129).
+Wind speed, **station-mean skill with the reference = each station's own climatology**
+(convention 3 of §10 in the schematisation: `skill_i = 1 − rmse_i²/obs_std_i²`, averaged over
+stations). These numbers are **not** comparable with the pooled-Murphy figures in the
+Recommendation table above, which take ERA5 as the reference — same track, different reference,
+different scale. 3-seed mean:
 
-What is **not** established: performance in the pre-2020 era for the shipped recipe. The earlier
-campaign arms were scored on seen/unseen eras, but the fixed recipe has been run only on the
-test and validation windows. Until that is measured, no claim is made about years before the
-training window.
+| era | window | seen? | ERA5 | CONUS404 | RTMA | **CNN** | CNN − ERA5 |
+|---|---|---|---|---|---|---|---|
+| E1 | 2000-2010 | no | 0.2533 | 0.2325 | *n/a* | **0.4230** | +0.170 |
+| E2 | 2011-2019 | no | 0.2512 | 0.2312 | 0.3680 | **0.4901** | +0.239 |
+| E3 | 2020-2026 | **yes** | 0.2846 | *n/a* | 0.5294 | **0.5221** | +0.237 |
 
-Two things constrain what such a test could show, and both must be stated with it:
+Seed spread is 0.009-0.013 throughout, so every gap in that table is far outside seed noise.
 
-- RTMA's own quality is era-dependent (station Murphy 0.403 pre-2020, 0.578 post-2020), so a
-  lower unseen-era score against RTMA is ambiguous between "worse model" and "noisier target".
-  Only station observations resolve it.
-- §6.2 of the schematisation showed that *training* on pre-2020 data made the model materially
-  worse, which is indirect evidence that the earlier period is a different — noisier — regime.
+**Read the last column, not the CNN column.** ERA5's own skill is era-dependent (0.2846 in E3 vs
+0.2512 in E2), so the raw CNN score conflates model degradation with input degradation. Measured
+as *added value over its own input*, the CNN is *identical* in the training era and the unseen era
+directly before it — +0.237 vs +0.239. There is no generalisation penalty at all across that
+boundary. Going back a further decade costs about 29% of the added value (+0.170), which is a real
+but bounded degradation, and part of it is era-dependent observation quality rather than the model.
 
-**Recommended next step:** per-year inference at τ = 0.5 over the pre-2020 record for the three
-recipe seeds, scored on both tracks. This was scoped but not run.
+Three results in that table are worth separating out:
 
----
+1. **In the training era the CNN sits at the ceiling, not above it.** E3 CNN 0.5221 vs RTMA
+   0.5294 — ~99% of the target. This is consistent with the Recommendation table (pooled Murphy
+   0.5043 vs RTMA 0.5586) and confirms it over a 6.5-year window rather than 11 months. RTMA *is*
+   what the model was trained to reproduce, so approaching it is the most that can be asked.
+   **Do not claim the model improves on its target in the era it was trained on.** The one
+   pre-resolution result that did show a CNN arm above RTMA was the deterministic control C1 on
+   the narrow test window (§1); it did not survive the head contradiction being resolved, and it
+   does not survive here either.
+2. **In the unseen era the CNN does exceed RTMA** — 0.4901 vs 0.3680, and on peaks too (top-10%
+   skill −3.97 vs −5.55). This is not a contradiction of (1): the pre-2020 RTMA is a coarser,
+   noisier product than the post-2020 RTMA the model trained on, and the CNN inherits the *later*
+   RTMA's quality wherever ERA5 supports it. That is the practically useful finding — the method
+   back-fills a high-quality product into years where the real product was worse or absent.
+3. **Direction generalises almost flat**: RMSE 60.1° / 58.0° / 57.6° across E1/E2/E3 against
+   ERA5's 67.6° / 66.0° / 66.8°. Direction was the CNN's strongest result and it is also its most
+   era-stable.
+
+**Peaks remain the known weakness, in every era.** Top-10% skill is −4.04 / −3.97 / −3.18 for the
+CNN against −7.50 / −8.30 / −7.44 for ERA5: a large improvement that is still firmly negative, with
+a top-decile bias of −1.9 to −2.2 m/s. In the training era RTMA beats the CNN on peaks (−2.30 vs
+−3.18), which is the clearest remaining headroom in the product.
+
+### USGS moorings — reported separately, and they disagree
+
+Scored on E3 only (all four moorings start after 2020-01-22): CNN 0.253 (seeds 0.187-0.301),
+RTMA 0.456, ERA5 −0.421. The CNN is clearly *worse* than RTMA here, and the seed spread is 12x
+wider than at the land stations.
+
+This is not treated as a counter-result, for reasons that must travel with the number: these
+anemometers sit at **1.2-4.9 m, not 10 m**, over water, and n is 18k against 48-66k at the land
+stations. The model was trained to reproduce a 10 m product. What the moorings actually show is
+that the recipe does not transfer to a different measurement height without recalibration — a real
+limitation, but a different claim from "it does not generalise in time".
 
 ## 5. Bias correction: ship both fields
 
@@ -248,7 +286,8 @@ artefact unlikely, but the label matters.)*
 
 ## 9. Open items
 
-1. **Pre-2020 era generalisation for the recipe** (§4) — scoped, not run. Highest value.
+1. ~~Pre-2020 era generalisation for the recipe~~ — **done** (§4). Answered: no penalty vs
+   2011-2019, ~29% loss of added value at 2000-2010, at the RTMA ceiling in the training era.
 2. Gust head is trained and checkpointed but not validated against gust observations.
 3. `skill_ew` negativity for all products including RTMA needs a written explanation of the
    metric's reference, not just a caveat.
