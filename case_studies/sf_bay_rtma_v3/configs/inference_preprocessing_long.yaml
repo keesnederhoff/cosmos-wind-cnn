@@ -1,3 +1,7 @@
+# ALL FOUR ERA5 inputs must be the _filled copies. The 2026 tail of the
+# merged 2000-2026 files carries the border NaN that 2000-2025 does not,
+# and ONE NaN column on the target grid makes the U-Net emit a wholly-NaN
+# frame -- which silently cost the first pass every 2026 timestep.
 # LONG-RECORD inference config for the shipping recipe (2000-2026).
 #
 # FIVE input channels, not four. lr_gust is dragged in by the gust variable
@@ -15,9 +19,11 @@
 # Verified bit-identical to the old 1940_2026 files over a 2022 overlap month,
 # so inference stays consistent with what training saw.
 #
-# lr_gust uses the _filled variant: the raw 2000-2026 gust file carries the
-# same fixed 23.6%% NaN border as the 2026-08-06 drop, which would silently
-# produce a zero-sample set. u/v/cloud in this drop are already clean.
+# ALL FOUR use the _filled variant. gust carries the fixed 23.6%% border NaN at
+# every timestep. u/v/cloud look clean because 2000-2025 IS clean -- only their
+# 2026 tail is bordered, which is why a mid-record spot-check passed it and the
+# first inference pass lost all of 2026. Verified: filled == original,
+# bit-identical, over 2015-06 and 2024-01.
 #
 # SPAN: gust ends 2026-07-26, u/v/cloud 2026-08-01, so the intersection ends
 # 2026-07-26. RTMA truth runs to 2026-07-30, so the whole record is scoreable.
@@ -25,16 +31,16 @@
 
 sources:
   lr_u:
-    file: ERA5_eastward_wind_2000_2026_UTM.nc
+    file: ERA5_eastward_wind_2000_2026_UTM_filled.nc
     source_var: null
   lr_v:
-    file: ERA5_northward_wind_2000_2026_UTM.nc
+    file: ERA5_northward_wind_2000_2026_UTM_filled.nc
     source_var: null
   lr_gust:
     file: ERA5_wind_gust_2000_2026_UTM_filled.nc
     source_var: null
   lr_cloud:
-    file: ERA5_cloud_area_fraction_2000_2026_UTM.nc
+    file: ERA5_cloud_area_fraction_2000_2026_UTM_filled.nc
     source_var: null
   static_terrain:
     file: RTMA_SFbay_2p5km_surface_height_static_UTM10.nc

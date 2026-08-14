@@ -65,28 +65,39 @@ def nearest_valid_index_map(invalid2d):
 def fill_border(da):
     """Nearest-valid 2D extrapolation, applied to every timestep at once.
 
-    The NaN mask is time-invariant (verified: identical at different timesteps
-    and across variables), so the index map is computed ONCE from a mid-record
-    slice and applied as a single gather. That avoids xarray's ffill/bfill, which
-    needs the optional `bottleneck` package, and is far faster than a per-step
-    interpolation.
+    The index map is built from the UNION of the NaN mask over all live
+    timesteps, not from one representative slice. It used to be sampled from the
+    mid-record slice on the stated assumption that the mask is time-invariant --
+    true of the uniformly-bordered 2026-08-06 files, and FALSE of the merged
+    2000-2026 files, where a clean 2000-2025 record has newly-downloaded 2026
+    data appended to it. Mid-record lands in the clean part, `invalid.any()` is
+    False, and the function returns the array untouched while reporting success.
+
+    The gather is applied only WHERE THE VALUE IS ACTUALLY NaN. With a genuinely
+    time-invariant mask that is identical to gathering everywhere; with a
+    time-varying one it is the difference between patching holes and overwriting
+    good data at the border columns for every timestep in the record.
+
+    This avoids xarray's ffill/bfill, which needs the optional `bottleneck`
+    package, and is far faster than a per-step interpolation.
     """
     vals = da.values                                   # (T, y, x)
-    mid = vals[vals.shape[0] // 2]
-    invalid = np.isnan(mid)
+    nan_all = np.isnan(vals)
+    dead = nan_all.all(axis=(1, 2))
+    live = ~dead
+    invalid = (nan_all[live].any(axis=0) if live.any() else nan_all.any(axis=0))
     if not invalid.any():
         return da
     iy, ix = nearest_valid_index_map(invalid)
-    filled = vals[:, iy, ix]
+    filled = np.where(nan_all, vals[:, iy, ix], vals)
     # Preserve any wholly-NaN slices as NaN rather than fabricating values from
     # a gather over an all-NaN plane (they are outside the analysis window).
-    dead = np.isnan(vals).all(axis=(1, 2))
     if dead.any():
         filled[dead] = np.nan
     return da.copy(data=filled)
 
 
-def process(path, out_path, dry_run=False, window=("2020-01-01", "2025-12-31")):
+def process(path, out_path, dry_run=False, window=None):
     """Fill and verify. Verification is restricted to the ANALYSIS WINDOW.
 
     Some accumulated ERA5 variables (wind_gust, friction_velocity,
@@ -95,6 +106,16 @@ def process(path, out_path, dry_run=False, window=("2020-01-01", "2025-12-31")):
     all-NaN slice, and it does not need to: that stamp is 2013-12-31T19:00, far
     outside the 2020+ window. So require zero NaN inside the window, and merely
     report fully-NaN slices elsewhere.
+
+    window=None means VERIFY THE WHOLE TIME AXIS, and that is now the DEFAULT.
+    It used to default to ("2020-01-01", "2025-12-31") -- the v3 training window
+    -- which silently missed a defect confined to the TAIL of a file. The 2026
+    portion of the 2000-2026 u/v/cloud files carries the border NaN while
+    2000-2025 does not: the drop appended new data onto clean older data. This
+    check therefore reported "already clean in window", and every 2026 inference
+    frame came out wholly NaN -- one NaN column on the target grid propagates
+    across the entire field through the U-Net. Narrow it with --window only when
+    the record outside that window is genuinely unused.
     """
     name = os.path.basename(path)
     ds = xr.open_dataset(path)
@@ -105,7 +126,7 @@ def process(path, out_path, dry_run=False, window=("2020-01-01", "2025-12-31")):
         ds.close()
         return None
 
-    win = da.sel(time=slice(*window))
+    win = da if window is None else da.sel(time=slice(*window))
     probe = win.isel(time=slice(0, None, max(1, win.sizes["time"] // 200))).load()
     before = float(np.isnan(probe.values).mean()) * 100.0
     if before == 0.0:
@@ -122,7 +143,7 @@ def process(path, out_path, dry_run=False, window=("2020-01-01", "2025-12-31")):
 
     # Verify over the FULL window, not a subsample -- the gaps are short and a
     # coarse probe both misses them and mis-states their size.
-    fwin = filled.sel(time=slice(*window)).load().values
+    fwin = (filled if window is None else filled.sel(time=slice(*window))).load().values
     nan_any = np.isnan(fwin)
     dead = nan_any.all(axis=(1, 2))
     spatial_residual = float((nan_any.any(axis=(1, 2)) & ~dead).mean()) * 100.0
@@ -170,6 +191,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data-dir", default=DEFAULT_DIR)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--window", nargs=2, metavar=("START", "END"), default=None,
+                    help="Verify only this time slice. Default: the WHOLE time "
+                         "axis -- a narrower window is how the 2026 border NaN "
+                         "went unnoticed for a whole inference campaign.")
+    ap.add_argument("--only", default=None,
+                    help="Substring filter on the filename, so a targeted repair "
+                         "does not rewrite 28 unrelated files.")
     args = ap.parse_args()
 
     files = sorted(glob.glob(os.path.join(args.data_dir, "ERA5_*.nc")))
@@ -181,11 +209,15 @@ def main():
     files = [f for f in files
              if os.path.basename(f) not in dedup_stems or f.endswith("_dedup.nc")]
 
-    print(f"ERA5 border-NaN fill  ({len(files)} candidate files)")
+    if args.only:
+        files = [f for f in files if args.only in os.path.basename(f)]
+    print(f"ERA5 border-NaN fill  ({len(files)} candidate files)"
+          f"  verify-window={args.window or 'FULL TIME AXIS'}")
     n = 0
     for f in files:
         out = f.replace(".nc", "_filled.nc")
-        if process(f, out, dry_run=args.dry_run):
+        if process(f, out, dry_run=args.dry_run,
+                   window=tuple(args.window) if args.window else None):
             n += 1
     print(f"\n{n} file(s) {'need filling' if args.dry_run else 'filled'}.")
     print("NOTE sea_surface_temperature deliberately excluded (real land mask); "
