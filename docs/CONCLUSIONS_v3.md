@@ -288,7 +288,9 @@ artefact unlikely, but the label matters.)*
 
 1. ~~Pre-2020 era generalisation for the recipe~~ — **done** (§4). Answered: no penalty vs
    2011-2019, ~29% loss of added value at 2000-2010, at the RTMA ceiling in the training era.
-2. Gust head is trained and checkpointed but not validated against gust observations.
+2. Gust head is trained and checkpointed but deliberately NOT validated against gust
+   observations — descoped by the project owner 2026-08-14. The gust quantiles ship as-is,
+   unverified against obs; treat them as indicative, not calibrated.
 3. `skill_ew` negativity for all products including RTMA needs a written explanation of the
    metric's reference, not just a caveat.
 4. Whether the epoch-7/epoch-27 split is domain-specific or a general property of this
