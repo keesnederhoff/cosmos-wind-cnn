@@ -51,7 +51,20 @@ ERA_DIRS = {
     'Era 3  2022-present': 'era3_2022-present',
     'Era A  2011-2019': 'eraA_2011-2019',
     'Era B  2020-2025': 'eraB_2020-2025',
+    # Three-era obs track (2026-08-14). E1 predates RTMA entirely.
+    'Obs E1  2000-2010': 'obsE1_2000-2010',
+    'Obs E2  2011-2019': 'obsE2_2011-2019',
+    'Obs E3  2020-2026': 'obsE3_2020-2026',
 }
+# This dict being hardcoded is exactly how a campaign's ranking silently goes
+# missing: a new era writes its per-station CSV, nothing here names the
+# directory, and the combined pass produces no row for it without erroring.
+# VAL_ERA_DIRS lets a run declare its own eras, e.g.
+#     VAL_ERA_DIRS="Obs E3=obsE3_2020-2026_USGS__usgs"
+_edenv = os.environ.get('VAL_ERA_DIRS', '').strip()
+if _edenv:
+    ERA_DIRS = {kv.split('=', 1)[0].strip(): kv.split('=', 1)[1].strip()
+                for kv in _edenv.split(',') if '=' in kv}
 # Murphy-skill variables (have a defined observed variance) and their file keys.
 SKILL_VARS = [('Wind Speed [m/s]', 'speed'),
               # Top decile: Murphy skill is almost always negative here (the

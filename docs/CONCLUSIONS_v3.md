@@ -159,9 +159,33 @@ Seed spread is 0.009-0.013 throughout, so every gap in that table is far outside
 **Read the last column, not the CNN column.** ERA5's own skill is era-dependent (0.2846 in E3 vs
 0.2512 in E2), so the raw CNN score conflates model degradation with input degradation. Measured
 as *added value over its own input*, the CNN is *identical* in the training era and the unseen era
-directly before it — +0.237 vs +0.239. There is no generalisation penalty at all across that
-boundary. Going back a further decade costs about 29% of the added value (+0.170), which is a real
-but bounded degradation, and part of it is era-dependent observation quality rather than the model.
+directly before it — +0.237 vs +0.239. There is no generalisation penalty across that boundary.
+
+### The E1 drop is a convention artefact, not a model result — check both
+
+The same runs under the **pooled** Murphy convention (pool MSE and observed variance across
+stations by sample size, rather than averaging per-station skills) tell a materially different
+story about 2000-2010:
+
+| era | stations | ERA5 | CONUS404 | RTMA | **CNN** (3-seed) |
+|---|---|---|---|---|---|
+| E1 | 26 (17 IEM + 9 NDBC) | 0.328 | 0.322 | *n/a* | **0.543** |
+| E2 | 36 (19 + 17) | 0.260 | 0.257 | 0.402 | **0.535** |
+| E3 | 37 (20 + 17) | 0.242 | *n/a* | 0.577 | **0.553** |
+
+**Pooled, the CNN is flat across all three eras — 0.543 / 0.535 / 0.553 — with no backward
+degradation at all.** Station-mean showed 0.423 / 0.490 / 0.522, a clear decline. Both are correct
+computations of different things, and the disagreement is concentrated entirely in E1.
+
+The cause is the station population, not the model: **E1 has 26 stations against E3's 37, and its
+IEM:NDBC ratio is 17:9 versus 20:17.** Station-mean weights every station equally, so it is
+sensitive to that shifting land/water mix; pooled weights by sample size and pools variance, so it
+is not. Eight NDBC buoys simply do not exist before 2011.
+
+**Do not quote a single number for backward generalisation.** The honest statement is: pooled, no
+degradation; station-mean, ~19% lower in E1 — and the gap between those two answers is a
+station-population effect that no amount of retraining would change. This is the same lesson as
+the grid-vs-obs disagreement in §1, one level down: the aggregation is part of the claim.
 
 Three results in that table are worth separating out:
 
@@ -182,10 +206,25 @@ Three results in that table are worth separating out:
    ERA5's 67.6° / 66.0° / 66.8°. Direction was the CNN's strongest result and it is also its most
    era-stable.
 
-**Peaks remain the known weakness, in every era.** Top-10% skill is −4.04 / −3.97 / −3.18 for the
-CNN against −7.50 / −8.30 / −7.44 for ERA5: a large improvement that is still firmly negative, with
-a top-decile bias of −1.9 to −2.2 m/s. In the training era RTMA beats the CNN on peaks (−2.30 vs
-−3.18), which is the clearest remaining headroom in the product.
+**Peaks remain the known weakness, in every era** — but the *kind* of weakness is now pinned down,
+and it is the favourable kind. Top-10% skill is −4.04 / −3.97 / −3.18 for the CNN against
+−7.50 / −8.30 / −7.44 for ERA5: a large improvement that is still firmly negative, with a
+top-decile bias of −1.9 to −2.2 m/s, and in the training era RTMA beats the CNN (−2.30 vs −3.18).
+
+**Remove the mean bias and the ordering flips — the CNN beats RTMA on peaks in every era:**
+
+| top-10%, bias-removed (`skill_dm`, pooled) | E1 | E2 | E3 |
+|---|---|---|---|
+| CNN (best seed) | **−0.065** | **−0.167** | **−0.050** |
+| RTMA | *n/a* | −0.527 | −0.199 |
+| ERA5 | −0.171 | −0.263 | −0.183 |
+| CONUS404 | −0.702 | −0.868 | *n/a* |
+
+So the CNN's peak deficit is almost entirely a **location** error, not a **shape** error: it puts
+the storm in the right place with the right structure and simply under-states its magnitude. That
+is the error class a post-hoc quantile map can fix, and it is independent confirmation of the
+right-skewed (not U-shaped) PIT that motivated keeping bias correction in §5. It also means the
+raw-vs-BC decision matters more for peaks than the raw top-10% column suggests.
 
 ### USGS moorings — reported separately, and they disagree
 

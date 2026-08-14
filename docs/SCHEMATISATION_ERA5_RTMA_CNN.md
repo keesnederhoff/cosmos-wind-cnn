@@ -432,11 +432,17 @@ Non-negotiable: **state the convention next to every number.**
    gridded skill rewards imitating the analysis, while further training moves the model away
    from the analysis and toward the stations. This is treated as a finding, not an anomaly — see
    `CONCLUSIONS_v3.md`.
-6. **Generalisation backwards in time is bounded, and now measured.** Scored against stations
-   over three eras, the recipe's *added value over its own input* is identical in the training
-   era and the unseen decade before it (+0.237 vs +0.239), and falls about 29% two decades back
-   (+0.170). Report added-value-over-input, not raw skill: the input's own quality is
-   era-dependent, so raw skill conflates model degradation with input degradation.
+6. **Generalisation backwards in time, and the aggregation trap under it.** Scored against
+   stations over three eras, the model's *added value over its own input* is identical in the
+   training era and the unseen decade before it. Two rules follow. First, report
+   added-value-over-input, not raw skill — the input's own quality is era-dependent, so raw skill
+   conflates model degradation with input degradation. Second, **report the era comparison under
+   BOTH aggregations**: pooled (weight by sample size, pool variance) showed the model flat across
+   all three eras, station-mean (weight each station equally) showed a ~19% drop in the oldest —
+   and the entire disagreement was the station POPULATION, which shrank from 37 to 26 and shifted
+   its land/water mix as older buoys drop out of the record. A single-number answer to "does it
+   generalise backwards" is not available; whichever aggregation is quoted must be named, and a
+   changing station population must be reported alongside it.
 7. **The method does not transfer across measurement height without recalibration.** Against
    moorings whose anemometers sit at 1.2-4.9 m rather than 10 m, the model scores 0.253 where
    the target analysis scores 0.456, with 12x the seed spread seen at 10 m land stations. A model
