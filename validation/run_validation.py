@@ -69,10 +69,24 @@ CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample 
 # USGS moorings all start after 2020-01-22 and so can only appear in E3; run
 # them as their own group (VAL_GROUPS=usgs), never pooled into the IEM+NDBC
 # headline, because their anemometers sit at 1.2-4.9 m rather than 10 m.
+# E3's END IS THE RECORD'S END, and it moves whenever ERA5 is extended. It was
+# '2026-07-27' for the 2026-08-14 product; the 2026-08-27 ERA5 drop pushed the
+# CNN record to 2026-08-10T01, so a stale end here would silently drop the whole
+# extension and make the re-run invisible in the scores -- the same class of
+# defect as the hardcoded ERA_DIRS in combined_skill.py. Override with
+# VAL_ERA_END to reproduce an older window exactly (e.g. VAL_ERA_END=2026-07-27
+# for a like-for-like comparison against the 2026-08-14 baseline).
+#
+# NOTE the references do not all reach the new end: RTMA truth stops at
+# 2026-07-30T18, so in the last ~10 days the CNN is scored against stations with
+# no RTMA column beside it. That is a coverage difference, not a bias -- each
+# model is matched to observations independently -- but do not read the tail as
+# a CNN-vs-RTMA result.
+_E3_END = os.environ.get('VAL_ERA_END', '2026-08-11')
 _ERA_TR = {
     'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010', ['ERA5', 'CONUS404']),
     'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019', ['ERA5', 'CONUS404', 'RTMA-SFbay']),
-    'E3': (('2020-01-01', '2026-07-27'), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
+    'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
 }
 if ERA in _ERA_TR:
     from config import V3_ERA_MODELS as _VE

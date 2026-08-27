@@ -1,0 +1,87 @@
+# LONG-RECORD inference config for the shipping recipe, 2000-01-01 -> 2026-08-10.
+#
+# Supersedes inference_preprocessing_long.yaml, which is KEPT UNCHANGED so the
+# 2026-08-14 product stays reproducible. The only substantive difference is the
+# source files: the 2026-08-27 ERA5 drop extends the record from 2026-07-26T18
+# to 2026-08-10T01, about 14.3 days.
+#
+# FIVE input channels, not four. lr_gust is dragged in by the gust variable
+# PAIR (its low_res key), not by any predictor block, so every arm carries it
+# whether or not gust is in its block. A four-channel config aborts with
+# "KeyError: no source for lr_gust".
+#
+# WHY A TRIMMED CONFIG AT ALL: step_inference regrids EVERY source declared
+# here and intersects their time axes BEFORE selecting this arm's inputs. The
+# full config is a superset of all predictor blocks and its pressure-level
+# files start 2015, so every year before 2015 aborted on "No overlapping
+# timesteps" even though these five channels reach back much further.
+#
+# FILE STATE -- the four dynamic inputs are NOT in the same condition, and the
+# difference is deliberate. Staged by scripts/stage_era5_20260810.py.
+#
+#   u / v / cloud   Verified clean over the WHOLE time axis: 0 duplicate
+#                   stamps, 0 backward jumps, 0 gaps, and 0 border NaN at any
+#                   timestep -- so NO _filled variant exists or is needed, and
+#                   the plain file is the correct one to use here. They are
+#                   bit-identical to the files the 2026-08-14 product was
+#                   inferred from over 2022-06 and 2024-01.
+#
+#   gust            Two repairs. (1) The recurring accumulated-variable seam
+#                   damage -- 312 duplicate stamps and 26 backward jumps, the
+#                   same defect as the 2026-08-06 drop and in the same three
+#                   variables -- fixed by scripts/fix_era5_time_axis.py.
+#                   (2) THE NEW DOWNLOAD CARRIES REAL VALUES IN THE 83-CELL
+#                   BORDER (23.25% of the grid) THAT EVERY EARLIER GUST FILE
+#                   HAD AS NaN AND THE PIPELINE FILLED BY NEAREST-VALID GATHER.
+#                   The model was TRAINED on the filled version, and 28 of the
+#                   285 ERA5 cells the target interpolation touches sit in that
+#                   border (the westernmost ~11 of 162 target columns). Feeding
+#                   it real values there would be untested extrapolation, so
+#                   the border is masked back and re-filled the same way.
+#                   Verified: max |new - old| = 1.9e-06 over all 232891 shared
+#                   steps, interior and border alike.
+#
+# SPAN: u/v/cloud end 2026-08-10T02, gust's last LIVE step is 2026-08-10T01
+# (its 02-06 tail is the usual accumulated-variable dead seam), so the
+# intersection ends 2026-08-10T01. RTMA truth ends 2026-07-30T18 -- about 4 of
+# the new days are scoreable on the grid, the remaining ~10 are product-only
+# and can be judged at stations but not against RTMA.
+#
+# Use with INFER_CONFIG=<this file>.
+
+sources:
+  lr_u:
+    file: ERA5_eastward_wind_2000_20260810_UTM.nc
+    source_var: null
+  lr_v:
+    file: ERA5_northward_wind_2000_20260810_UTM.nc
+    source_var: null
+  lr_gust:
+    file: ERA5_wind_gust_2000_20260810_UTM_filled.nc
+    source_var: null
+  lr_cloud:
+    file: ERA5_cloud_area_fraction_2000_20260810_UTM.nc
+    source_var: null
+  static_terrain:
+    file: RTMA_SFbay_2p5km_surface_height_static_UTM10.nc
+    source_var: null
+start_date: '2000-01-01'
+end_date: '2026-08-11'
+interpolation_method: linear
+compression_level: 1
+physical_bounds:
+  lr_u:
+    min: -100
+    max: 100
+  lr_v:
+    min: -100
+    max: 100
+  lr_gust:
+    min: 0
+    max: 150
+  lr_cloud:
+    min: -0.1
+    max: 1.1
+  static_terrain:
+    min: -500
+    max: 5000

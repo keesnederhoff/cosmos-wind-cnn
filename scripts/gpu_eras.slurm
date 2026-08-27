@@ -12,26 +12,38 @@
 #SBATCH --array=0-80%3
 #SBATCH --output=sweep_logs/%x_%a_%A.log
 
-# Three-era inference, 2000-2025, 3 seeds. See era_manifest.txt.
+# Three-era inference, 2000-2026, 3 seeds. See era_manifest.txt.
 #
 # REDUCED QUANTILE SET, and every level is an ACTUAL grid level. The 19-level
 # midpoint grid tops out at tau=0.9737 -- there is NO true P99, and asking for
 # 0.95/0.99 silently collapses both onto that one level. Requesting real grid
 # values keeps the written levels honest about what the model produces.
+#
+# THREE KNOBS ARE ENV-OVERRIDABLE, and their defaults reproduce the 2026-08-14
+# product exactly. Set them to re-run against an extended ERA5 record without
+# forking this script:
+#   ERAS_MANIFEST  window list (default era_manifest.txt, ends 2026-07-27)
+#   ERAS_CONFIG    inference preprocessing config
+#   ERAS_CKPT      checkpoint; also becomes the output filename prefix
+# The era product is SPEED-TRACK ONLY -- best_speed.pth writes
+# speed_full_record_*.nc, which is what validation/config.py globs. There are no
+# direction_ year files and the validation never asks for any.
 
 set -euo pipefail
 ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
-MANIFEST=/home/cnederhoff/cosmos/cosmos-wind-cnn/scripts/era_manifest.txt
+REPO=/home/cnederhoff/cosmos/cosmos-wind-cnn
+MANIFEST=${ERAS_MANIFEST:-$REPO/scripts/era_manifest.txt}
 
 LINE=$(grep -vE '^\s*#|^\s*$' "$MANIFEST" | sed -n "$((SLURM_ARRAY_TASK_ID+1))p")
 read RN INF_START INF_END <<< "$LINE"
 if [ -z "$INF_END" ]; then echo "FATAL: manifest line $SLURM_ARRAY_TASK_ID parsed short: '$LINE'"; exit 1; fi
 
-CKPT=best_speed.pth
+CKPT=${ERAS_CKPT:-best_speed.pth}
 if [ ! -f "$ROOT/sf_bay_rtma_v3/results/$RN/checkpoint/$CKPT" ]; then
   echo "FATAL: no checkpoint for $RN"; exit 1
 fi
 echo "ERAS idx=$SLURM_ARRAY_TASK_ID run=$RN window=$INF_START..$INF_END"
+echo "ERAS manifest=$MANIFEST"
 
 # Replay the FIXED RECIPE -- the archived training.yaml holds file defaults only.
 export SWEEP_HEAD=quantile
@@ -51,7 +63,8 @@ export INFER_QUANTILES=0.1316,0.5,0.8158,0.9211,0.9737
 # blocks and step_inference intersects the time axes of EVERY declared source
 # before selecting this arm's five -- its pressure-level files start 2015, so
 # without this every year before 2015 aborts on 'No overlapping timesteps'.
-export INFER_CONFIG=/home/cnederhoff/cosmos/cosmos-wind-cnn/case_studies/sf_bay_rtma_v3/configs/inference_preprocessing_long.yaml
+export INFER_CONFIG=${ERAS_CONFIG:-$REPO/case_studies/sf_bay_rtma_v3/configs/inference_preprocessing_long.yaml}
+echo "ERAS config=$INFER_CONFIG ckpt=$CKPT"
 
 export COSMOS_DATA_ROOT=$ROOT
 export COSMOS_RESULTS_ROOT=$ROOT

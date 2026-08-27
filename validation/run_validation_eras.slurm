@@ -74,25 +74,37 @@ PY
 
 export PYTHONUNBUFFERED=1
 
+# VAL_RUN_TAG appends to every era's output directory so a re-run cannot
+# overwrite an already-published set. Unset reproduces the original directory
+# names exactly (obsE1_2000-2010, ...), so this is backward compatible.
+# The 2026-08-27 re-run uses VAL_RUN_TAG=v20260810, which keeps the 2026-08-14
+# baseline intact beside it for a before/after comparison.
+TAG=${VAL_RUN_TAG:-}
+echo "VAL_RUN_TAG='$TAG'  VAL_ERA_END='${VAL_ERA_END:-<default 2026-08-11>}'"
+
 case "$SLURM_ARRAY_TASK_ID" in
   0)
     echo "======== obs era E1 (2000-2010, pre-RTMA): IEM + NDBC pooled ========"
-    VAL_ERA=E1 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras python run_validation.py
+    VAL_ERA=E1 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras \
+      VAL_OUTDIR_SUFFIX="$TAG" python run_validation.py
     ;;
   1)
     echo "======== obs era E2 (2011-2019, unseen): IEM + NDBC pooled ========"
-    VAL_ERA=E2 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras python run_validation.py
+    VAL_ERA=E2 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras \
+      VAL_OUTDIR_SUFFIX="$TAG" python run_validation.py
     ;;
   2)
     echo "======== obs era E3 (2020-2026, training era): IEM + NDBC pooled ========"
-    VAL_ERA=E3 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras python run_validation.py
+    VAL_ERA=E3 VAL_WEIGHTS="IEM:1,NDBC:1" VAL_RANK_DIR=rankings_eras \
+      VAL_OUTDIR_SUFFIX="$TAG" python run_validation.py
     ;;
   3)
     # USGS moorings: E3 only. Every mooring starts after 2020-01-22, and the
     # anemometers sit at 1.2-4.9 m rather than 10 m, so these are reported as
     # their own group and never pooled into the headline above.
     echo "======== obs era E3: USGS moorings (separate group) ========"
-    VAL_ERA=E3 VAL_USGS=1 VAL_ONLY_GROUPS=USGS VAL_OUTDIR_SUFFIX=_usgs python run_validation.py
+    VAL_ERA=E3 VAL_USGS=1 VAL_ONLY_GROUPS=USGS \
+      VAL_OUTDIR_SUFFIX="${TAG}_usgs" python run_validation.py
     ;;
 esac
 
