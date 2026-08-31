@@ -84,14 +84,20 @@ CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample 
 # a CNN-vs-RTMA result.
 _E3_END = os.environ.get('VAL_ERA_END', '2026-08-11')
 _ERA_TR = {
-    'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010', ['ERA5', 'CONUS404']),
-    'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019', ['ERA5', 'CONUS404', 'RTMA-SFbay']),
-    'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
+    # 2026-08-29 products-comparison: full reference field per era, each product
+    # only in eras it (mostly) covers. Sup3rWind (2007-2013) is PARTIAL in both
+    # E1 and E2; HRRR (Oct 2014+) partial in E2. UCLA/CONUS404/NOW-23 end
+    # 2020/2021/2022 -> excluded from E3 rather than scored on <=2 of 6.6 yr.
+    'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010',
+           ['ERA5', 'CONUS404', 'UCLA', 'NOW-23', 'Sup3rWind']),
+    'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019',
+           ['ERA5', 'CONUS404', 'RTMA-SFbay', 'HRRR', 'UCLA', 'NOW-23', 'Sup3rWind']),
+    'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026',
+           ['ERA5', 'RTMA-SFbay', 'HRRR']),
 }
 if ERA in _ERA_TR:
-    from config import V3_ERA_MODELS as _VE
     tr, outdir, _refs = _ERA_TR[ERA]
-    models = list(_VE) + _refs
+    models = ['CNN-quantile-v3'] + _refs
 elif ERA == 'V3':
     # v3 held-out test window. Product list is built from config.V3_MODELS so it
     # cannot drift from what config.py actually defines, plus ERA5 and RTMA as

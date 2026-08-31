@@ -64,7 +64,9 @@ PWS_SOURCES = [   # (group, archive NetCDF, anemometer height m)
 # ---- USGS mooring (ERO20 Grizzly Bay) --------------------------------------
 # The offsite Emeryville-project moorings (Whales Tale / EMC) were dropped in the
 # self-contained relocation; only ERO20, which lives in observed_data, remains.
-INCLUDE_USGS_MOORINGS = os.environ.get('VAL_USGS', '0').lower() in ('1', 'true', 'yes')
+# On by default (2020+ eras pick it up automatically); set VAL_USGS=0 to exclude.
+# ERO20_GRZ starts 2020-01-22, so this has no effect on eras entirely pre-2020.
+INCLUDE_USGS_MOORINGS = os.environ.get('VAL_USGS', '1').lower() in ('1', 'true', 'yes')
 USGS_MOORINGS = {
     'WT_MW101': {
         'source': 'whales_tale', 'group': 'USGS',
@@ -98,11 +100,15 @@ USGS_MOORINGS = {
 # ===========================================================================
 # Self-contained layout (2026-07-23): all modeled products live under
 # DATA_ROOT/modeled_data/<product>/; observations under DATA_ROOT/observed_data/.
-# Secondary products (HRRR, CONUS404, UCLA, WRF_CalNev, NOW-23, Sup3rWind) were
-# dropped from the active config — re-add if needed.
+# Secondary products (HRRR, UCLA, WRF_CalNev, NOW-23, Sup3rWind) were dropped
+# from the active config — re-add if needed.
 ERA5_DIR      = DATA_ROOT / "modeled_data" / "era5"
 CNN_DIR       = DATA_ROOT / "modeled_data" / "cnn_fullrecord"
-C404_DIR      = DATA_ROOT / "modeled_data" / "conus404"
+# CONUS404 was never actually retired -- it lives off DATA_ROOT entirely, on a
+# different drive (2026-08-28). Hardcoded rather than DATA_ROOT-relative because
+# it isn't staged under the Caldera bundle either; re-add a Caldera path here if
+# CONUS404 is needed on HPC.
+C404_DIR      = Path(r"m:\emeryville_crescent\01_data\Conus404_SFbay_V3\processed")
 RTMA_DIR      = DATA_ROOT / "modeled_data" / "rtma"
 # 0/1 land-sea mask on the RTMA 2.5 km UTM-10 grid. Used to draw a coastline on the
 # spatial maps: the Delft3D deltabay.ldb referenced by LDB_FILE is not staged here.
@@ -119,9 +125,14 @@ MODELS = {
         'temp_var': 'air_temperature', 'single_file': False,
     },
     'ERA5': {
-        'u_file': ERA5_DIR / "ERA5_eastward_wind_1940_2026_UTM.nc",
-        'v_file': ERA5_DIR / "ERA5_northward_wind_1940_2026_UTM.nc",
-        'temp_file': ERA5_DIR / "ERA5_air_temperature_1940_2026_UTM.nc",
+        # Repointed 2026-08-28: the 1940-2026 build under ERA5_DIR was archived to
+        # era5_old\ on 2026-08-25 and replaced by this fm_netcdf\ rebuild, whose
+        # span is 2000-2026 (not 1940-2026 -- fine for E1 onward, not for anything
+        # needing pre-2000 ERA5). Pressure/radiation scalars below are NOT rebuilt
+        # here yet and still point at the archived files.
+        'u_file': ERA5_DIR / "fm_netcdf" / "ERA5_eastward_wind_2000_2026_UTM.nc",
+        'v_file': ERA5_DIR / "fm_netcdf" / "ERA5_northward_wind_2000_2026_UTM.nc",
+        'temp_file': ERA5_DIR / "fm_netcdf" / "ERA5_air_temperature_2000_2026_UTM.nc",
         'u_var': 'eastward_wind', 'v_var': 'northward_wind',
         'temp_var': 'air_temperature', 'single_file': False,
     },
@@ -357,9 +368,12 @@ MODEL_COLORS['CNN-extreme-BC'] = 'mediumorchid'
 MODEL_COLORS['CNN-wave-p2-BC'] = 'rebeccapurple'
 MODEL_COLORS['CNN-wave-p3-BC'] = 'plum'
 
+# Repointed 2026-08-28: RTMA_DIR's wind files were moved under fm_netcdf\ in the
+# same 2026-07-31 reorg that relocated ERA5 (see ERA5_DIR fix above) -- span is
+# still 2011-2026, unlike ERA5's truncated rebuild, so no window caveat here.
 MODELS['RTMA-SFbay'] = {
-    'u_file': RTMA_DIR / 'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc',
-    'v_file': RTMA_DIR / 'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc',
+    'u_file': RTMA_DIR / 'fm_netcdf' / 'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc',
+    'v_file': RTMA_DIR / 'fm_netcdf' / 'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc',
     'u_var': 'eastward_wind', 'v_var': 'northward_wind', 'single_file': False,
 }
 MODEL_COLORS['RTMA-SFbay'] = 'tab:cyan'
@@ -453,3 +467,58 @@ for _sd, _run in _RECIPE_RUNS:
     }
     MODEL_COLORS[_lab] = {'s1': '#000000', 's2': '#555555', 's3': '#999999'}[_sd]
     V3_ERA_MODELS.append(_lab)
+
+# ---- CNN-quantile-v3: single-arm full-record inference (2026-08-27 request).
+# Same multifile layout/caveat as V3_ERA_MODELS above (one arm, not three
+# seeds), staged locally rather than on Caldera -- lives directly under
+# DATA_ROOT/results/20260827_validation/inference/.
+MODELS['CNN-quantile-v3'] = {
+    # Results home moved 2026-08-29: g:\01_...\results\20260827_validation ->
+    # this validation_results dir. Hardcoded (off DATA_ROOT) like C404_DIR.
+    'data_dir': Path(r"g:\03-downscaling_meteo_cnn\validation_results"
+                     r"\20260827_CNN_v3\inference"),
+    'u_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+    'v_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+    'u_var': 'hr_u', 'v_var': 'hr_v', 'crs': 'utm10n',
+}
+MODEL_COLORS['CNN-quantile-v3'] = '#000000'
+
+# ===========================================================================
+# 2026-08-29: products-comparison redo -- re-add the four secondary wind
+# products dropped in the 2026-07-23 self-contained relocation (entries from
+# git d1b927e~1). UCLA/NOW-23/Sup3rWind were moved off m:\ into the validation
+# data home (modeled_data\other_meteo_data\, found 2026-08-30) so they resolve
+# from DATA_ROOT; HRRR still lives on m:\ like CONUS404's C404_DIR above and is
+# NOT staged for Caldera -- Windows-only until staged.
+# Coverage: HRRR Oct2014-2026, UCLA 1980-2020, NOW-23 2000-2022,
+# Sup3rWind 2007-2013. Loaders (load_model, load_model_ucla, load_model_box)
+# and their dispatch branches never left validate_met_models.py.
+# ===========================================================================
+_HRRR_METEO  = Path(r"m:\emeryville_crescent\04_model_runs\meteo")
+_OTHER_METEO = DATA_ROOT / "modeled_data" / "other_meteo_data"
+MODELS['HRRR'] = {
+    'u_file': _HRRR_METEO / "HRRR_WY2015-WY2026_u10_eastward_wind.nc",
+    'v_file': _HRRR_METEO / "HRRR_WY2015-WY2026_v10_northward_wind.nc",
+    'temp_file': _HRRR_METEO / "HRRR_WY2015-WY2026_air_temp.nc",
+    'u_var': 'eastward_wind', 'v_var': 'northward_wind',
+    'temp_var': 'air_temperature', 'single_file': False,
+}
+MODELS['UCLA'] = {
+    'data_dir': _OTHER_METEO / 'data' / 'ucla_reanalysis',
+    'u_pattern': 'era5_reanalysis_1hr_u10_*.nc',
+    'v_pattern': 'era5_reanalysis_1hr_v10_*.nc',
+    'temp_pattern': 'era5_reanalysis_1hr_t2_*.nc',
+    'u_var': 'u10', 'v_var': 'v10', 'temp_var': 't2', 'crs': 'lcc',
+}
+MODELS['NOW-23'] = {
+    'kind': 'box', 'crs': 'unstructured',
+    'data_dir': _OTHER_METEO / 'now23', 'pattern': 'now23_ca_bayarea_box_*.nc',
+    'speed_var': 'windspeed_10m', 'dir_var': 'winddirection_10m',
+}
+MODELS['Sup3rWind'] = {
+    'kind': 'box', 'crs': 'latlon_2d', 'has_uv': True,
+    'data_dir': _OTHER_METEO / 'sup3rwind', 'pattern': 'sup3rwind_bayarea_box_*.nc',
+    'u_var': 'u_10m', 'v_var': 'v_10m', 'speed_var': 'windspeed_10m',
+}
+MODEL_COLORS.update({'HRRR': 'tab:red', 'UCLA': 'tab:purple',
+                     'NOW-23': 'tab:pink', 'Sup3rWind': 'tab:olive'})
