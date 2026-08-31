@@ -1773,11 +1773,29 @@ def calculate_circular_statistics(model_dir, obs_dir):
     sin_o = np.sin(np.radians(od - np.mean(od)))
     circ_corr = np.sum(sin_m * sin_o) / np.sqrt(np.sum(sin_m**2) * np.sum(sin_o**2))
 
+    # Circular "climatology": the shortest angular distance of each obs from the
+    # circular MEAN obs direction. This is the circular analogue of obs_var in
+    # calculate_statistics() -- it lets NRMSE and Murphy skill be defined the same
+    # way for a wrapped 0-360 deg variable as for a linear one.
+    circ_mean_obs = np.degrees(np.arctan2(np.mean(np.sin(np.radians(od))),
+                                          np.mean(np.cos(np.radians(od))))) % 360
+    diff_clim = ((od - circ_mean_obs + 180) % 360) - 180
+    mse_clim = np.mean(diff_clim ** 2)
+    nrmse = circ_rmse / np.sqrt(mse_clim) if mse_clim > 0 else np.nan
+    skill = 1.0 - (circ_rmse ** 2) / mse_clim if mse_clim > 0 else np.nan
+
     return {
         'n': int(len(md)),
         'bias': float(circ_bias), 'rmse': float(circ_rmse), 'mae': float(circ_mae),
         'corr': float(circ_corr), 'p_value': np.nan,
         'scatter_index': np.nan,
+        'nrmse': float(nrmse), 'skill': float(skill),
+        # Rel Bias has no clean circular definition (dividing a degrees-bias by a
+        # circular "mean" direction is meaningless near the 0/360 wrap). Skill(EW)
+        # needs paired observed wind-SPEED weights this function does not receive.
+        # Both stay NaN by design, not by omission.
+        'rel_bias': np.nan, 'r2': np.nan,
+        'skill_ew_u1': np.nan, 'skill_ew': np.nan, 'skill_ew_u3': np.nan,
         'model_mean': float(np.mean(md)), 'obs_mean': float(np.mean(od)),
         'model_std': float(np.std(diff)), 'obs_std': np.nan,
     }
@@ -3014,56 +3032,54 @@ def validate_variable(model_arr, obs_arr, model_time, obs_time, var_name,
                 plot_timeseries(m_p, o_p, t_p, var_name, station_id, model_name,
                                 st_p, output_dir, period_label='peak_event')
 
-    # Top-percentile analysis for wind speed (stats always; plot gated inside)
-    st_top = None
+    # Quantile-bin analysis for wind speed (CSV-only, no plots)
+    st_bins = []
     if not is_direction and 'Wind Speed' in var_name:
-        st_top = _validate_top_percentile(
+        st_bins = _validate_quantile_bins(
             model_matched, obs_matched, common_time,
-            var_name, station_id, model_name, output_dir,
-            percentile=90, make_plots=make_plots)
+            var_name, station_id, model_name, output_dir)
 
-    return st, st_top
-
-
-TOP_PERCENTILE_LABEL = 'top10pct'
+    return st, st_bins
 
 
-def _validate_top_percentile(model_matched, obs_matched, common_time,
-                              var_name, station_id, model_name, output_dir,
-                              percentile=90, make_plots=True):
-    """Separate scatter + metrics for the top percentile of observed values."""
+QUANTILE_BINS = [(0, 25, 'q00-25'), (25, 50, 'q25-50'), (50, 75, 'q50-75'),
+                 (75, 90, 'q75-90'), (90, 100, 'q90-100')]
+
+
+def _validate_quantile_bins(model_matched, obs_matched, common_time,
+                             var_name, station_id, model_name, output_dir):
+    """Per-quantile-bin stats for wind speed, CSV-only (no plots).
+
+    Bins the OBSERVED distribution into quartiles + a tail decile
+    (0-25/25-50/50-75/75-90/90-100 pct) and computes calculate_statistics()
+    within each bin. Returns a list of (bin_label, stats_dict) pairs, skipping
+    any bin with fewer than 10 valid points."""
     mask_valid = ~(np.isnan(model_matched) | np.isnan(obs_matched))
     if mask_valid.sum() < 20:
-        return
+        return []
 
     obs_clean = np.where(mask_valid, obs_matched, np.nan)
-    threshold = np.nanpercentile(obs_clean, percentile)
-    top_mask = mask_valid & (obs_matched >= threshold)
-    n_top = top_mask.sum()
+    edges = np.nanpercentile(obs_clean, [b[0] for b in QUANTILE_BINS] + [100])
 
-    if n_top < 10:
-        print(f"      Top {100 - percentile}%: only {n_top} points, skipping.")
-        return None
-
-    m_top = model_matched[top_mask]
-    o_top = obs_matched[top_mask]
-
-    st_top = calculate_statistics(m_top, o_top)
-    if st_top is None:
-        return None
-
-    pct_label = f"top {100 - percentile}%"
-    print(f"      {pct_label} (>= {threshold:.2f}): N={st_top['n']}  "
-          f"RMSE={st_top['rmse']:.3f}  bias={st_top['bias']:.3f}  "
-          f"R={st_top['corr']:.3f}  skill={st_top['skill']:.3f}")
-
-    # Scatter plot for top percentile
-    if make_plots:
-        var_top = f"{var_name} ({pct_label})"
-        plot_scatter(m_top, o_top, var_top, station_id, model_name,
-                     st_top, output_dir)
-
-    return st_top
+    out = []
+    for i, (lo, hi, label) in enumerate(QUANTILE_BINS):
+        lo_val, hi_val = edges[i], edges[i + 1]
+        if hi == 100:
+            bin_mask = mask_valid & (obs_matched >= lo_val) & (obs_matched <= hi_val)
+        else:
+            bin_mask = mask_valid & (obs_matched >= lo_val) & (obs_matched < hi_val)
+        n_bin = bin_mask.sum()
+        if n_bin < 10:
+            print(f"      {label} ({lo}-{hi}%): only {n_bin} points, skipping.")
+            continue
+        st_bin = calculate_statistics(model_matched[bin_mask], obs_matched[bin_mask])
+        if st_bin is None:
+            continue
+        print(f"      {label} [{lo_val:.2f},{hi_val:.2f}): N={st_bin['n']}  "
+              f"RMSE={st_bin['rmse']:.3f}  bias={st_bin['bias']:.3f}  "
+              f"R={st_bin['corr']:.3f}  skill={st_bin['skill']:.3f}")
+        out.append((label, st_bin))
+    return out
 
 
 def plot_cwop_summary(records, output_dir):
@@ -3233,16 +3249,16 @@ def main():
                         model_ts['time'], obs['time'],
                         var_label, sid, model_name, model_output,
                         is_direction=is_dir, make_plots=make_plots)
-                    st, st_top = result if isinstance(result, tuple) else (result, None)
+                    st, st_bins = result if isinstance(result, tuple) else (result, [])
                     if st is not None:
                         all_records.append({
                             'model': model_name, 'station': sid, 'source': grp,
                             'variable': var_label, **st,
                         })
-                    if st_top is not None:
+                    for bin_label, st_bin in st_bins:
                         all_records.append({
                             'model': model_name, 'station': sid, 'source': grp,
-                            'variable': f"{var_label} (top 10%)", **st_top,
+                            'variable': f"{var_label} ({bin_label})", **st_bin,
                         })
 
                 # Wind rose + spatial peak map — figures only (gated)
@@ -3311,11 +3327,16 @@ def main():
                     mtime, obs['time'],
                     label, sid, model_name, model_output,
                     make_plots=make_plots)
-                st, _ = result if isinstance(result, tuple) else (result, None)
+                st, st_bins = result if isinstance(result, tuple) else (result, [])
                 if st is not None:
                     all_records.append({
                         'model': model_name, 'station': sid, 'source': grp,
                         'variable': label, **st,
+                    })
+                for bin_label, st_bin in st_bins:
+                    all_records.append({
+                        'model': model_name, 'station': sid, 'source': grp,
+                        'variable': f"{label} ({bin_label})", **st_bin,
                     })
 
                 # Spatial peak map for this scalar variable (utm10n grids; obs-peak time)

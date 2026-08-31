@@ -1,0 +1,71 @@
+00-08-01 � 2011-01-01)
+      RMSE=1.671  bias=-0.082  R=0.880
+      Saved: 46012_Wind_U10_m_s_scatter.png
+      Saved: 46012_Wind_U10_m_s_whole_period_timeseries.png
+      Saved: 46012_Wind_U10_m_s_peak_event_timeseries.png
+    Variable: Wind V10 [m/s]
+      Matched 84356 points (2000-08-01 � 2011-01-01)
+      RMSE=1.663  bias=-0.243  R=0.932
+      Saved: 46012_Wind_V10_m_s_scatter.png
+      Saved: 46012_Wind_V10_m_s_whole_period_timeseries.png
+      Saved: 46012_Wind_V10_m_s_peak_event_timeseries.png
+    Variable: Wind Speed [m/s]
+      Matched 85028 points (2000-08-01 � 2011-01-01)
+      RMSE=1.380  bias=-0.280  R=0.904
+      Saved: 46012_Wind_Speed_m_s_scatter.png
+      Saved: 46012_Wind_Speed_m_s_whole_period_timeseries.png
+      Saved: 46012_Wind_Speed_m_s_peak_event_timeseries.png
+      top 10% (>= 9.90): N=8788  RMSE=1.721  bias=-1.188  R=0.781  skill=-0.031
+      Saved: 46012_Wind_Speed_m_s_(top_10%)_scatter.png
+    Variable: Wind Direction [deg]
+      Matched 84360 points (2000-08-01 � 2011-01-01)
+      RMSE=33.291  bias=4.177  R=0.900
+      Saved: 46012_Wind_Direction_deg_scatter.png
+      Saved: 46012_Wind_Direction_deg_whole_period_timeseries.png
+      Saved: 46012_Wind_Direction_deg_peak_event_timeseries.png
+      Matched 85028 points (2000-08-01 � 2011-01-01)
+      Matched 84360 points (2000-08-01 � 2011-01-01)
+      Skipping wind rose (windrose package not installed)
+
+  Loading model: ERA5
+    WARNING: file not found: g:\01_meteorlogical_analysis_sfbay\modeled_data\era5\ERA5_eastward_wind_1940_2026_UTM.nc
+  Skipping ERA5 (could not load).
+
+  Loading model: CONUS404
+    WARNING: file not found: g:\01_meteorlogical_analysis_sfbay\modeled_data\conus404\CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc
+  Skipping CONUS404 (could not load).
+
+  Statistics saved: g:\01_meteorlogical_analysis_sfbay\results\20260827_validation\obsE1_2000-2010_v20260828\validation_statistics.csv
+
+  === Mean skill metrics across ALL stations ===
+          model                   variable source            n      bias      rmse       mae     corr       r2    nrmse  scatter_index  rel_bias     skill  skill_ew
+CNN-quantile-v3       Wind Direction [deg]    ALL 62661.884615 -2.157811 60.357863 42.169450 0.576997      NaN      NaN            NaN       NaN       NaN       NaN
+CNN-quantile-v3           Wind Speed [m/s]    ALL 65643.500000 -0.467065  1.675852  1.327805 0.778908 0.612831 0.736435       0.512239 -0.112893  0.428554  0.005253
+CNN-quantile-v3 Wind Speed [m/s] (top 10%)    ALL  7285.884615 -2.169176  2.688946  2.346756 0.444793 0.235300 2.096110       0.343708 -0.271893 -3.991505 -2.390825
+CNN-quantile-v3             Wind U10 [m/s]    ALL 62640.884615 -0.161736  1.730124  1.319944 0.743251 0.572085 0.710287       2.090827  0.072259  0.462672 -0.332110
+CNN-quantile-v3             Wind V10 [m/s]    ALL 62640.692308  0.213469  1.711262  1.312114 0.771108 0.603324 0.668464      -4.846712 -1.205115  0.530351 -0.247011
+  Saved: taylor_diagram_Wind_Speed_m_s.png
+  Saved: taylor_diagram_Wind_Speed_m_s_(top_10%).png
+  Saved: taylor_diagram_Wind_U10_m_s.png
+  Saved: taylor_diagram_Wind_V10_m_s.png
+  Saved: multi_model_Wind_U10_m_s.png
+  Saved: multi_model_Wind_V10_m_s.png
+  Saved: multi_model_Wind_Speed_m_s.png
+  Saved: multi_model_Wind_Speed_m_s_(top_10%).png
+  Saved: multi_model_Wind_Direction_deg.png
+  Saved: taylor_diagram_Wind_Speed_m_s.png
+  Saved: taylor_diagram_Wind_Speed_m_s_(top_10%).png
+  Saved: taylor_diagram_Wind_U10_m_s.png
+  Saved: taylor_diagram_Wind_V10_m_s.png
+  Saved: multi_model_Wind_U10_m_s.png
+  Saved: multi_model_Wind_V10_m_s.png
+  Saved: multi_model_Wind_Speed_m_s.png
+  Saved: multi_model_Wind_Speed_m_s_(top_10%).png
+  Saved: multi_model_Wind_Direction_deg.png
+
+======================================================================
+VALIDATION COMPLETE
+======================================================================
+EXIT_CODE:0
+
+[exited with code 0]

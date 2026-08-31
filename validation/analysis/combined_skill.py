@@ -36,9 +36,10 @@ import config
 #     VAL_WEIGHTS="IEM:1,NDBC:1"      -> pool IEM+NDBC only (USGS reported separately)
 #     VAL_WEIGHTS="IEM:1,NDBC:1,USGS:1"
 # A category absent from WEIGHTS is dropped from the pooled score entirely.
-# NOTE the default up-weights USGS to 2.0 -- fine when USGS forces the Bay model
-# directly, wrong when USGS is meant to be a separate side-by-side group.
-_DEFAULT_WEIGHTS = {'USGS': 2.0, 'NDBC': 1.0, 'IEM': 1.0, 'CWOP': 0.5}
+# NOTE the default weights every category equally and drops CWOP entirely
+# (2026-08-28). Pass VAL_WEIGHTS to reproduce an older run's weighting exactly,
+# e.g. VAL_WEIGHTS="USGS:2,NDBC:1,IEM:1,CWOP:0.5" for the pre-2026-08-28 default.
+_DEFAULT_WEIGHTS = {'IEM': 1.0, 'NDBC': 1.0, 'USGS': 1.0}
 _wenv = os.environ.get('VAL_WEIGHTS', '').strip()
 WEIGHTS = ({kv.split(':')[0].strip(): float(kv.split(':')[1])
             for kv in _wenv.split(',') if ':' in kv} if _wenv else dict(_DEFAULT_WEIGHTS))
@@ -67,9 +68,6 @@ if _edenv:
                 for kv in _edenv.split(',') if '=' in kv}
 # Murphy-skill variables (have a defined observed variance) and their file keys.
 SKILL_VARS = [('Wind Speed [m/s]', 'speed'),
-              # Top decile: Murphy skill is almost always negative here (the
-              # conditional obs variance is tiny), so read the RMSE column.
-              ('Wind Speed [m/s] (top 10%)', 'speed_top10'),
               ('Wind U10 [m/s]', 'u10'),
               ('Wind V10 [m/s]', 'v10'),
               ('Air Temperature [C]', 'temp'),
@@ -87,6 +85,12 @@ MODEL_COLORS = {
     'CONUS404-downscaled': 'tab:gray', 'CONUS404-downscaled-100m': 'gold',
 }
 _FALLBACK_COLORS = ['black', 'magenta', 'teal', 'navy', 'crimson', 'darkgreen']
+
+MODEL_MARKERS = {
+    'CNN-quantile-v3': 'o', 'ERA5': 's', 'CONUS404': 'D', 'RTMA-SFbay': '^',
+    'RTMA': '^', 'AORC': 'v', 'CNN': 'P',
+}
+_FALLBACK_MARKERS = ['X', '*', 'h', '8', 'p', '<', '>']
 # ===========================================================================
 
 
@@ -98,6 +102,16 @@ def model_color_map(models):
         if m in MODEL_COLORS:
             cmap[m] = MODEL_COLORS[m]
     return cmap
+
+
+def model_marker_map(models):
+    mmap = {}
+    for i, m in enumerate(sorted(m for m in set(models) if m not in MODEL_MARKERS)):
+        mmap[m] = _FALLBACK_MARKERS[i % len(_FALLBACK_MARKERS)]
+    for m in models:
+        if m in MODEL_MARKERS:
+            mmap[m] = MODEL_MARKERS[m]
+    return mmap
 
 
 # ---- Murphy-skill variables (speed / u10 / v10) ---------------------------
@@ -133,7 +147,7 @@ def _cat_stats(g):
     ew = _nw_mean(g['skill_ew'].values, n) if 'skill_ew' in g else np.nan
     ew3 = _nw_mean(g['skill_ew_u3'].values, n) if 'skill_ew_u3' in g else np.nan
     return dict(mse=mse, cmse=cmse, var=var, bias=bias, rz=rz, stdr=stdr,
-                ew1=ew1, ew=ew, ew3=ew3,
+                corr=np.tanh(rz), ew1=ew1, ew=ew, ew3=ew3,
                 skill_c=(1.0 - mse / var if var > 0 else np.nan), n_sta=len(g))
 
 
@@ -156,7 +170,8 @@ def combine_skill(df_m):
         skill_ew_u1_mean=_catavg(cats, w, 'ew1'),  # station mean, q=1 (linear)
         skill_ew_mean=_catavg(cats, w, 'ew'),      # station mean, q=2 (stress ~U^2)
         skill_ew_u3_mean=_catavg(cats, w, 'ew3'),  # station mean, q=3 (energy ~U^3)
-        cats='+'.join(f"{c}({cats[c]['n_sta']})" for c in sorted(cats)))
+        cats='+'.join(f"{c}({cats[c]['n_sta']})" for c in sorted(cats)),
+        cats_detail=cats)
 
 
 # ---- Direction (circular) -------------------------------------------------
@@ -182,19 +197,61 @@ def combine_dir(df_m):
         cats='+'.join(f"{c}({cats[c]['n_sta']})" for c in sorted(cats)))
 
 
-def taylor(ax, models_xy, colors):
-    for r in [0.5, 1.0, 1.5, 2.0]:
-        ax.plot(np.linspace(0, np.pi / 2, 100), [r] * 100, color='0.85', lw=0.6, zorder=0)
-    for Rc in [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99]:
-        ax.plot([np.arccos(Rc)] * 2, [0, 2.2], color='0.85', lw=0.6, zorder=0)
-        ax.text(np.arccos(Rc), 2.25, f'{Rc:g}', fontsize=7, color='0.4', ha='center')
-    ax.plot(0, 1.0, 'k*', ms=16, zorder=5)
-    for m, (R, s) in models_xy.items():
-        ax.plot(np.arccos(np.clip(R, -1, 1)), s, 'o', ms=11,
-                color=colors.get(m, 'gray'), mec='white', mew=0.6, zorder=4)
+def taylor(ax, models_xy, colors, markers, station_points=None, rmax=2.3):
+    """Taylor diagram: per-station markers (small, transparent) plus one bold
+    pooled/weighted marker per model, with centered-RMS-difference arcs about
+    the (r=1, nstd=1) reference point.
+
+    models_xy   : {model: (corr, std_ratio)} -- the bold marker position,
+                  already pooled/weighted by combine_skill()/combine_dir().
+    station_points : optional list of (model, corr, std_ratio) -- one row per
+                  raw station observation, drawn as small alpha=0.32 markers
+                  underneath the bold marker. None/[] draws no per-station layer.
+    """
     ax.set_thetamin(0); ax.set_thetamax(90)
-    ax.set_rmax(2.3); ax.set_rticks([0.5, 1.0, 1.5, 2.0]); ax.set_rlabel_position(95)
-    ax.text(np.pi / 4, 2.55, 'correlation', fontsize=9, ha='center', color='0.3')
+    ax.set_theta_zero_location('E'); ax.set_theta_direction(1)
+    ax.set_rmax(rmax)
+
+    # normalized-std-dev rings (constant radius, centered at origin)
+    rticks = [r for r in [0.5, 1.0, 1.5, 2.0] if r <= rmax]
+    for r in rticks:
+        ax.plot(np.linspace(0, np.pi / 2, 100), [r] * 100, color='0.85', lw=0.6, zorder=0)
+    ax.set_rticks(rticks); ax.set_rlabel_position(95)
+
+    # correlation gridlines
+    for Rc in [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99]:
+        ax.plot([np.arccos(Rc)] * 2, [0, rmax], color='0.85', lw=0.6, zorder=0)
+        ax.text(np.arccos(Rc), rmax * 1.02, f'{Rc:g}', fontsize=7, color='0.4', ha='center')
+
+    # centered RMS-difference arcs about the (r=1, nstd=1) reference point
+    th = np.linspace(0, np.pi / 2, 400)
+    for rms in [x for x in (0.5, 1.0, 1.5, 2.0) if x < rmax]:
+        xx = 1.0 + rms * np.cos(th)
+        yy = rms * np.sin(th)
+        rr = np.hypot(xx, yy)
+        tt = np.arctan2(yy, xx)
+        keep = rr <= rmax
+        ax.plot(tt[keep], rr[keep], ':', color='0.72', lw=0.8, zorder=1)
+        if keep.any():
+            idx = np.where(keep)[0][-1]
+            ax.text(tt[idx], rr[idx], f'{rms:g}', color='0.55', fontsize=7,
+                    ha='center', va='bottom', bbox=dict(fc='white', ec='none', pad=0.4))
+
+    # dashed reference arc at nstd = 1, and the obs/gauge reference point
+    ax.plot(np.linspace(0, np.pi / 2, 200), np.ones(200), '--', color='0.5', lw=0.9, zorder=2)
+    ax.plot(0, 1.0, 'k*', ms=16, zorder=8)
+
+    # per-station small markers (underneath the bold marker)
+    for m, r, s in (station_points or []):
+        ax.plot(np.arccos(np.clip(r, -1, 1)), s, markers.get(m, 'o'),
+                color=colors.get(m, 'gray'), ms=3.2, alpha=0.32, mew=0, zorder=4)
+
+    # bold pooled/weighted marker per model
+    for m, (R, s) in models_xy.items():
+        ax.plot(np.arccos(np.clip(R, -1, 1)), s, markers.get(m, 'o'), ms=11,
+                color=colors.get(m, 'gray'), mec='white', mew=1.1, zorder=7)
+
+    ax.text(np.pi / 4, rmax * 1.12, 'correlation', fontsize=9, ha='center', color='0.3')
     ax.set_xlabel('normalized standard deviation', fontsize=9)
 
 
@@ -209,77 +266,84 @@ def _bar(models, vals, colors, ylabel, title, fpath, baseline=0.0):
     fig.tight_layout(); fig.savefig(fpath, dpi=150); plt.close(fig)
 
 
-rows_all = []
-for label, d in ERA_DIRS.items():
-    fp = BASE / d / 'validation_statistics.csv'
-    if not fp.exists():
-        print(f"{label}: no CSV"); continue
-    raw = pd.read_csv(fp)
-    raw = raw[(~raw['station'].astype(str).str.contains('MEAN')) & raw['source'].isin(WEIGHTS)]
+if __name__ == '__main__':
+    rows_all = []
+    for label, d in ERA_DIRS.items():
+        fp = BASE / d / 'validation_statistics.csv'
+        if not fp.exists():
+            print(f"{label}: no CSV"); continue
+        raw = pd.read_csv(fp)
+        raw = raw[(~raw['station'].astype(str).str.contains('MEAN')) & raw['source'].isin(WEIGHTS)]
 
-    print("\n" + "=" * 84)
-    print(f"{label}   weights={WEIGHTS}")
-    print("=" * 84)
+        print("\n" + "=" * 84)
+        print(f"{label}   weights={WEIGHTS}")
+        print("=" * 84)
 
-    # ---- Murphy-skill variables ----
-    for var, key in SKILL_VARS:
-        df = raw[raw['variable'] == var]
-        df = df[(df['obs_std'] > 0.05) & (df['n'] >= 50)
-                & np.isfinite(df['rmse']) & np.isfinite(df['corr'])
-                & np.isfinite(df['obs_std']) & np.isfinite(df['model_std'])]
-        if df.empty:
-            continue
-        res = {m: combine_skill(g) for m, g in df.groupby('model')}
-        res = {m: c for m, c in res.items() if c}
-        res = dict(sorted(res.items(), key=lambda kv: kv[1]['skill'], reverse=True))
-        print(f"\n  [{var}]  (pooled Murphy skill; skill_dm = bias-removed; ew* = station-mean energy-weighted)")
-        print(f"  {'model':<16} {'skill':>7} {'skill_dm':>8} {'ew_q1':>7} {'ew_q2':>7} {'ew_q3':>7} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
-        for m, c in res.items():
-            print(f"  {m:<16} {c['skill']:>7.3f} {c['skill_dm']:>8.3f} "
-                  f"{c['skill_ew_u1_mean']:>7.3f} "
-                  f"{c['skill_ew_mean']:>7.3f} {c['skill_ew_u3_mean']:>7.3f} "
-                  f"{c['rmse']:>6.2f} {c['bias']:>+6.2f} "
-                  f"{c['corr']:>6.3f} {c['std_ratio']:>6.2f}  {c['cats']}")
-            rows_all.append({'era': label, 'variable': var, 'model': m, **c})
-        colors = model_color_map(list(res)); models = list(res)
-        _bar(models, [res[m]['skill'] for m in models], colors,
-             'combined Murphy skill (pooled, weighted)',
-             f'{label} — combined {var} skill\nweights {WEIGHTS}',
-             BASE / d / f'combined_skill_{key}.png')
-        fig = plt.figure(figsize=(8, 8)); ax = fig.add_subplot(111, polar=True)
-        taylor(ax, {m: (res[m]['corr'], res[m]['std_ratio']) for m in models}, colors)
-        h = [Line2D([0], [0], marker='*', color='k', ms=13, ls='None', label='Obs (ref)')]
-        h += [Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[m], ms=10,
-                     ls='None', label=m) for m in models]
-        ax.legend(handles=h, loc='upper right', bbox_to_anchor=(1.32, 1.05), fontsize=9)
-        ax.set_title(f'{label} — combined Taylor: {var}\nweights {WEIGHTS}', fontsize=10, pad=24)
-        fig.tight_layout(); fig.savefig(BASE / d / f'combined_taylor_{key}.png', dpi=150); plt.close(fig)
+        # ---- Murphy-skill variables ----
+        for var, key in SKILL_VARS:
+            df = raw[raw['variable'] == var]
+            df = df[(df['obs_std'] > 0.05) & (df['n'] >= 50)
+                    & np.isfinite(df['rmse']) & np.isfinite(df['corr'])
+                    & np.isfinite(df['obs_std']) & np.isfinite(df['model_std'])]
+            if df.empty:
+                continue
+            res = {m: combine_skill(g) for m, g in df.groupby('model')}
+            res = {m: c for m, c in res.items() if c}
+            res = dict(sorted(res.items(), key=lambda kv: kv[1]['skill'], reverse=True))
+            print(f"\n  [{var}]  (pooled Murphy skill; skill_dm = bias-removed; ew* = station-mean energy-weighted)")
+            print(f"  {'model':<16} {'skill':>7} {'skill_dm':>8} {'ew_q1':>7} {'ew_q2':>7} {'ew_q3':>7} {'rmse':>6} {'bias':>6} {'corr':>6} {'std*':>6}  categories")
+            for m, c in res.items():
+                print(f"  {m:<16} {c['skill']:>7.3f} {c['skill_dm']:>8.3f} "
+                      f"{c['skill_ew_u1_mean']:>7.3f} "
+                      f"{c['skill_ew_mean']:>7.3f} {c['skill_ew_u3_mean']:>7.3f} "
+                      f"{c['rmse']:>6.2f} {c['bias']:>+6.2f} "
+                      f"{c['corr']:>6.3f} {c['std_ratio']:>6.2f}  {c['cats']}")
+                rows_all.append({'era': label, 'variable': var, 'model': m, **c})
+            colors = model_color_map(list(res)); markers = model_marker_map(list(res)); models = list(res)
+            _bar(models, [res[m]['skill'] for m in models], colors,
+                 'combined Murphy skill (pooled, weighted)',
+                 f'{label} — combined {var} skill\nweights {WEIGHTS}',
+                 BASE / d / f'combined_skill_{key}.png')
 
-    # ---- Wind direction (circular) ----
-    dfd = raw[raw['variable'] == DIR_VAR]
-    dfd = dfd[(dfd['n'] >= 50) & np.isfinite(dfd['rmse']) & np.isfinite(dfd['corr'])]
-    if not dfd.empty:
-        resd = {m: combine_dir(g) for m, g in dfd.groupby('model')}
-        resd = {m: c for m, c in resd.items() if c}
-        resd = dict(sorted(resd.items(), key=lambda kv: kv[1]['rmse']))   # lower=better
-        print(f"\n  [{DIR_VAR}]  (circular; ranked by RMSE, lower=better)")
-        print(f"  {'model':<12} {'rmse[deg]':>9} {'mae[deg]':>9} {'bias[deg]':>9} {'circ_corr':>9}  categories")
-        for m, c in resd.items():
-            print(f"  {m:<12} {c['rmse']:>9.1f} {c['mae']:>9.1f} {c['bias']:>+9.1f} "
-                  f"{c['corr']:>9.3f}  {c['cats']}")
-            rows_all.append({'era': label, 'variable': DIR_VAR, 'model': m,
-                             'rmse': c['rmse'], 'mae': c['mae'], 'bias': c['bias'],
-                             'corr': c['corr'], 'cats': c['cats']})
-        colors = model_color_map(list(resd)); models = list(resd)
-        _bar(models, [resd[m]['rmse'] for m in models], colors,
-             'combined circular RMSE [deg] (lower = better)',
-             f'{label} — combined wind-direction RMSE\nweights {WEIGHTS}',
-             BASE / d / 'combined_dir_rmse.png', baseline=None)
-    print(f"  -> figures saved in {d}")
+            station_points = [(m, r, s) for m, r, s in
+                              zip(df['model'], df['corr'], df['model_std'] / df['obs_std'])]
 
-if rows_all:
-    _rank = config.OUTPUT_ROOT / RANK_DIR
-    _rank.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows_all).to_csv(_rank / 'combined_skill_weighted.csv', index=False)
-    print(f"\nWrote {_rank / 'combined_skill_weighted.csv'}  (weights={WEIGHTS})")
-print("\nDONE.")
+            fig = plt.figure(figsize=(8, 8)); ax = fig.add_subplot(111, polar=True)
+            taylor(ax, {m: (res[m]['corr'], res[m]['std_ratio']) for m in models}, colors, markers,
+                   station_points=station_points)
+            h = [Line2D([0], [0], marker='*', color='k', ms=13, ls='None', label='Obs (ref)')]
+            h += [Line2D([0], [0], marker=markers[m], color='w', markerfacecolor=colors[m], ms=10,
+                         ls='None', label=m) for m in models]
+            ax.legend(handles=h, loc='upper right', bbox_to_anchor=(1.32, 1.05), fontsize=9)
+            ax.set_title(f'{label} — combined Taylor: {var}\nweights {WEIGHTS}\n'
+                         f'small = per-station, bold = pooled/weighted', fontsize=10, pad=28)
+            fig.tight_layout(); fig.savefig(BASE / d / f'combined_taylor_{key}.png', dpi=150); plt.close(fig)
+
+        # ---- Wind direction (circular) ----
+        dfd = raw[raw['variable'] == DIR_VAR]
+        dfd = dfd[(dfd['n'] >= 50) & np.isfinite(dfd['rmse']) & np.isfinite(dfd['corr'])]
+        if not dfd.empty:
+            resd = {m: combine_dir(g) for m, g in dfd.groupby('model')}
+            resd = {m: c for m, c in resd.items() if c}
+            resd = dict(sorted(resd.items(), key=lambda kv: kv[1]['rmse']))   # lower=better
+            print(f"\n  [{DIR_VAR}]  (circular; ranked by RMSE, lower=better)")
+            print(f"  {'model':<12} {'rmse[deg]':>9} {'mae[deg]':>9} {'bias[deg]':>9} {'circ_corr':>9}  categories")
+            for m, c in resd.items():
+                print(f"  {m:<12} {c['rmse']:>9.1f} {c['mae']:>9.1f} {c['bias']:>+9.1f} "
+                      f"{c['corr']:>9.3f}  {c['cats']}")
+                rows_all.append({'era': label, 'variable': DIR_VAR, 'model': m,
+                                 'rmse': c['rmse'], 'mae': c['mae'], 'bias': c['bias'],
+                                 'corr': c['corr'], 'cats': c['cats']})
+            colors = model_color_map(list(resd)); models = list(resd)
+            _bar(models, [resd[m]['rmse'] for m in models], colors,
+                 'combined circular RMSE [deg] (lower = better)',
+                 f'{label} — combined wind-direction RMSE\nweights {WEIGHTS}',
+                 BASE / d / 'combined_dir_rmse.png', baseline=None)
+        print(f"  -> figures saved in {d}")
+
+    if rows_all:
+        _rank = config.OUTPUT_ROOT / RANK_DIR
+        _rank.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows_all).to_csv(_rank / 'combined_skill_weighted.csv', index=False)
+        print(f"\nWrote {_rank / 'combined_skill_weighted.csv'}  (weights={WEIGHTS})")
+    print("\nDONE.")
