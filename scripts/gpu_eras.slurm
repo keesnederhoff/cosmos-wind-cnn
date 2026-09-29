@@ -8,6 +8,7 @@
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=0
 #SBATCH --account=pcmsc
+#SBATCH --wckey=reimbursable
 #SBATCH --time=4:00:00
 #SBATCH --array=0-80%3
 #SBATCH --output=sweep_logs/%x_%a_%A.log
@@ -28,6 +29,17 @@
 # The era product is SPEED-TRACK ONLY -- best_speed.pth writes
 # speed_full_record_*.nc, which is what validation/config.py globs. There are no
 # direction_ year files and the validation never asks for any.
+#
+# Output location (both opt-in; unset = write into <run>/output_inference/):
+#   ERAS_OUT_DIR   write the year file to $ERAS_OUT_DIR/<run>/ instead. Needed
+#                  whenever a window is ALREADY ARCHIVED -- same name, and the
+#                  archived file would be silently overwritten.
+#   ERAS_POINTS=1  station-points mode (1940 seed selection): the year grid goes
+#                  to a scratch dir, scripts/extract_station_points.py samples it
+#                  at the 45 validation stations into $ERAS_POINTS_DIR, and the
+#                  grid is deleted ONLY if extraction (and, where an archived
+#                  file of the same window exists, the reproduction check
+#                  against it) succeeded. A failed task keeps its grid.
 
 set -euo pipefail
 ROOT=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
@@ -66,6 +78,19 @@ export INFER_QUANTILES=0.1316,0.5,0.8158,0.9211,0.9737
 export INFER_CONFIG=${ERAS_CONFIG:-$REPO/case_studies/sf_bay_rtma_v3/configs/inference_preprocessing_long.yaml}
 echo "ERAS config=$INFER_CONFIG ckpt=$CKPT"
 
+OUT_NAME="${CKPT%.pth}"; OUT_NAME="${OUT_NAME#best_}_"
+[ "$CKPT" = "best_model.pth" ] && OUT_NAME=""
+OUT_NAME="${OUT_NAME}full_record_ERA5_${INF_START//-/}_${INF_END//-/}.nc"
+ARCHIVED="$ROOT/sf_bay_rtma_v3/results/$RN/output_inference/$OUT_NAME"
+POINTS=${ERAS_POINTS:-0}
+if [ "$POINTS" = "1" ]; then
+  PTS_DIR=${ERAS_POINTS_DIR:-$ROOT/sf_bay_rtma_v3/results/v1940_points}
+  export INFER_OUT_DIR="$PTS_DIR/_scratch/${RN}_${INF_START//-/}"
+elif [ -n "${ERAS_OUT_DIR:-}" ]; then
+  export INFER_OUT_DIR="$ERAS_OUT_DIR/$RN"
+fi
+echo "ERAS out=${INFER_OUT_DIR:-<run>/output_inference} file=$OUT_NAME points=$POINTS"
+
 export COSMOS_DATA_ROOT=$ROOT
 export COSMOS_RESULTS_ROOT=$ROOT
 export OMP_NUM_THREADS=10
@@ -82,3 +107,15 @@ srun python scripts/run_training_pipeline.py \
     --skip-preprocess --skip-train --skip-eval \
     --inference-start "$INF_START" --inference-end "$INF_END"
 echo "eras $RN $INF_START exit: $?"
+
+if [ "$POINTS" = "1" ]; then
+  GRID="$INFER_OUT_DIR/$OUT_NAME"
+  REF_ARGS=()
+  [ -f "$ARCHIVED" ] && REF_ARGS=(--ref "$ARCHIVED")
+  python scripts/extract_station_points.py --grid "$GRID" \
+      --out "$PTS_DIR/$RN/points_${OUT_NAME}" ${REF_ARGS[@]+"${REF_ARGS[@]}"}
+  # Reached only if extraction exited 0 (set -e): the grid is disposable now.
+  rm -f "$GRID"
+  rmdir "$INFER_OUT_DIR" 2>/dev/null || true
+  echo "eras points $RN $INF_START done"
+fi

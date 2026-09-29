@@ -365,7 +365,14 @@ def step_inference(case_dir, run_dirs, start_date, end_date, batch_size,
     _ckpt_tag = ('' if _ckpt_name == 'best_model.pth'
                  else _ckpt_name[:-4].replace('best_', '') + '_')
     output_filename = f'{_ckpt_tag}full_record_ERA5_{tag_start}_{tag_end}.nc'
-    output_path = run_dirs['output_inference'] / output_filename
+    # INFER_OUT_DIR redirects the output away from the run's output_inference/.
+    # A re-inference of an already-archived window would otherwise OVERWRITE
+    # the archived file of the same name -- which is the reference it is meant
+    # to be checked against. Unset = unchanged behaviour.
+    _odir = os.environ.get('INFER_OUT_DIR')
+    out_dir = Path(_odir) if _odir else run_dirs['output_inference']
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_path = out_dir / output_filename
 
     attrs = {
         'source_checkpoint': str(checkpoint_path),

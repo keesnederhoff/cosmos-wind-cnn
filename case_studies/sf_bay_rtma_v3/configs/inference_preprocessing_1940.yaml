@@ -1,0 +1,51 @@
+# FULL-RECORD inference config for the shipping recipe, 1940-01-01 -> 2026-08-10.
+#
+# Supersedes nothing: inference_preprocessing_long.yaml (2026-08-14 product) and
+# _long2.yaml (2026-08-27 product) are KEPT UNCHANGED so both stay reproducible.
+#
+# Inputs staged by scripts/stage_era5_1940.py: 1940-2025 from the 2026-09-28
+# ERA5 drop, 2026-01-01 -> 2026-08-10 from the 2026-08-27 staging. Proven
+# against the 2026-08-27 inputs over the WHOLE 2000 -> 2026-08-10 overlap:
+# u/v/cloud bit-identical, gust (border masked + re-filled exactly as training
+# saw it) to float noise. See the staging log for the numbers.
+#
+# FIVE input channels (lr_gust comes from the gust variable PAIR's low_res key,
+# not a predictor block). Trimmed to the five so no other source's shorter span
+# intersects the time axis away. Use with INFER_CONFIG=<this file>.
+
+sources:
+  lr_u:
+    file: ERA5_eastward_wind_1940_20260810_UTM.nc
+    source_var: null
+  lr_v:
+    file: ERA5_northward_wind_1940_20260810_UTM.nc
+    source_var: null
+  lr_gust:
+    file: ERA5_wind_gust_1940_20260810_UTM_filled.nc
+    source_var: null
+  lr_cloud:
+    file: ERA5_cloud_area_fraction_1940_20260810_UTM.nc
+    source_var: null
+  static_terrain:
+    file: RTMA_SFbay_2p5km_surface_height_static_UTM10.nc
+    source_var: null
+start_date: '1940-01-01'
+end_date: '2026-08-11'
+interpolation_method: linear
+compression_level: 1
+physical_bounds:
+  lr_u:
+    min: -100
+    max: 100
+  lr_v:
+    min: -100
+    max: 100
+  lr_gust:
+    min: 0
+    max: 150
+  lr_cloud:
+    min: -0.1
+    max: 1.1
+  static_terrain:
+    min: -500
+    max: 5000

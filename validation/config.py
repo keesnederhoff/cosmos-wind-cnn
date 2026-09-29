@@ -453,3 +453,21 @@ for _sd, _run in _RECIPE_RUNS:
     }
     MODEL_COLORS[_lab] = {'s1': '#000000', 's2': '#555555', 's3': '#999999'}[_sd]
     V3_ERA_MODELS.append(_lab)
+
+# ---- Full record 1940-2026 (2026-09-29) ----------------------------------
+# One input set 1940-01-01 -> 2026-08-10 (scripts/stage_era5_1940.py), seed
+# r1b_do010_s3 picked at stations (scripts/select_seed_points.py). Year files
+# live in their own dir, so the '????0101' glob sees exactly 87 segments and
+# none of the archived V3-ERAS files. Over 2000-2026 it is bit-identical to
+# V3-ERAS-s3 except for warm-up hours the archive started cold.
+V3_1940_MODELS = []
+for _sd, _run in [('s3', 'r1b_do010_s3')]:
+    _lab = f'V3-1940-{_sd}'
+    MODELS[_lab] = {
+        'data_dir': _V3_RESULTS / 'v1940_grids' / _run,
+        'u_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+        'v_pattern': 'speed_full_record_ERA5_????0101_*.nc',
+        'u_var': 'hr_u', 'v_var': 'hr_v', 'crs': 'utm10n',
+    }
+    MODEL_COLORS[_lab] = '#d62728'
+    V3_1940_MODELS.append(_lab)

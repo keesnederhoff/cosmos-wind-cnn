@@ -87,11 +87,30 @@ _ERA_TR = {
     'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010', ['ERA5', 'CONUS404']),
     'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019', ['ERA5', 'CONUS404', 'RTMA-SFbay']),
     'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
+    # Full-record eras (2026-09-29, the 1940-2026 product). ERA5 is the only
+    # gridded reference before 1979; CONUS404 starts 1979, so it enters E0 only.
+    # Station counts thin out fast: ~6 IEM in 1940-59, 10 in 1960-79, no NDBC
+    # before 1980 -- quote every pre-2000 number with its station count.
+    'Em2': (('1940-01-01', '1960-01-01'), 'obsEm2_1940-1959', ['ERA5']),
+    'Em1': (('1960-01-01', '1980-01-01'), 'obsEm1_1960-1979', ['ERA5']),
+    'E0':  (('1980-01-01', '2000-01-01'), 'obsE0_1980-1999', ['ERA5', 'CONUS404']),
 }
+# VAL_ERA_SET=1940 scores the 1940-2026 product (config.V3_1940_MODELS). Over
+# E1-E3 it also carries the archived same-seed arm V3-ERAS-s3, which the new
+# product reproduces bit-for-bit -- any score gap between the two is a red flag.
+# Unset keeps the 2026-08 era runs exactly as they were.
+_ERA_SET = os.environ.get('VAL_ERA_SET', '')
 if ERA in _ERA_TR:
-    from config import V3_ERA_MODELS as _VE
+    from config import V3_ERA_MODELS as _VE, V3_1940_MODELS as _V40
     tr, outdir, _refs = _ERA_TR[ERA]
-    models = list(_VE) + _refs
+    _pre2000 = ERA in ('Em2', 'Em1', 'E0')
+    if _ERA_SET == '1940':
+        _cnn = list(_V40) + ([] if _pre2000 else ['V3-ERAS-s3'])
+    elif _pre2000:
+        _cnn = list(_V40)          # the V3-ERAS arms start in 2000
+    else:
+        _cnn = list(_VE)
+    models = _cnn + _refs
 elif ERA == 'V3':
     # v3 held-out test window. Product list is built from config.V3_MODELS so it
     # cannot drift from what config.py actually defines, plus ERA5 and RTMA as
