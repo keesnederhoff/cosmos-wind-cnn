@@ -334,3 +334,79 @@ artefact unlikely, but the label matters.)*
    metric's reference, not just a caveat.
 4. Whether the epoch-7/epoch-27 split is domain-specific or a general property of this
    architecture is untested — it would need one further domain to answer.
+
+---
+
+## 10. Full record, 1940-01-01 → 2026-08-10 (2026-09-29)
+
+The recipe was re-inferred over the **whole** ERA5 record from one input set: the
+2026-09-28 ERA5 drop for 1940-2025, and the 2026-08-27 staging for the 2026 tail.
+This is a single run, not a backfill spliced onto the 2000-2026 product.
+
+**Inputs** (`scripts/stage_era5_1940.py`):
+- **u / v / cloud** are bit-identical to the 2026-08-27 inputs over the whole 2000 → 2026-08-10
+  overlap.
+- **Gust**: the new download again carries real values in the 83 border cells that training saw
+  as NaN + nearest-valid fill. The border was masked and re-filled, as on 2026-08-27. After that,
+  gust is bit-identical over the overlap too.
+- The new gust has the standard 7 h dead seam at 2000-01-01T00-06, where the old download
+  had live values. Those 7 steps were copied back so year 2000 reproduces.
+- **Reproduction**: all 81 archived year-windows (3 seeds × 27) reproduce with max |diff| = 0
+  at every station. The only differences are warm-up hours the archive had started cold
+  (e.g. 2000-01-01T00-04), which are now predicted.
+
+**Seed choice — made at stations, not on the grid.** All 3 seeds were inferred over the full
+record with only the 45 validation-station time series kept (`extract_station_points.py`,
+stencils taken from `validate_met_models` itself). Scoring: pooled Murphy skill of 10 m speed,
+IEM+NDBC, identical samples per seed, year-paired 2 SE rule (`select_seed_points.py`).
+
+| | r1_do010 | r1b_do010_s2 | **r1b_do010_s3** |
+|---|---|---|---|
+| all-record skill | 0.4926 | 0.4897 | **0.4981** |
+| gap to s3 (2 SE) | +0.0074 (0.0029) | +0.0090 (0.0017) | — |
+
+s3 clears 2 SE against both and leads in 5 of 6 eras (1980-99 is the exception), so **s3
+ships**. The gap is small in absolute terms but consistent.
+
+### Obs validation per era (seed s3; pooled Murphy, 10 m speed, IEM+NDBC)
+
+| era | stations | CNN | ERA5 | **CNN − ERA5** | RTMA | CONUS404 | dir RMSE CNN / ERA5 |
+|---|---|---|---|---|---|---|---|
+| 1940-59 | IEM 6 | 0.343 | −0.037 | **+0.380** | — | — | 62° / 70° |
+| 1960-79 | IEM 10 | 0.428 | 0.119 | **+0.309** | — | — | 61° / 70° |
+| 1980-99 | IEM 14 + NDBC 2 | 0.567 | 0.378 | +0.189 | — | 0.227 | 51° / 57° |
+| 2000-10 | 17 + 9 | 0.548 | 0.328 | +0.220 | — | 0.322 | 57° / 65° |
+| 2011-19 | 19 + 17 | 0.542 | 0.260 | +0.282 | 0.402 | 0.257 | 58° / 67° |
+| 2020-26 | 20 + 18 | 0.560 | 0.242 | +0.318 | 0.577 | — | 58° / 67° |
+
+- **The CNN adds value over its own input in every era, and most in the earliest ones.**
+  Absolute skill falls before 1980, but ERA5's falls further.
+- Both carry a large low bias against the 1940s-60s stations (CNN −1.28 / −0.99 m/s, ERA5
+  −1.71 / −1.31). Six airport anemometers with era-typical siting and heights make this
+  partly an observation-homogeneity question, not only a model one.
+- **Quote every pre-1980 number with its station count.**
+- **Peaks do not improve in 1940-59.** Bias-removed top-10 % skill is −0.23 (CNN) vs −0.16
+  (ERA5); 1960-79 is a tie.
+- 2000-2026 reproduces §4's pooled numbers (0.54-0.56, flat), and V3-1940-s3 scores
+  identically to the archived V3-ERAS-s3.
+
+### Product (`results/v1940_product/`)
+
+| file | content |
+|---|---|
+| `CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_raw_19400101_20260810.nc` | `wind_speed(time, quantile, y, x)`, 5 levels (τ 0.13/0.50/0.82/0.92/0.97), hourly, float32 zlib, chunks 24 h × 1 level × full grid |
+| `CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_BC_19400101_20260810.nc` | same, bias-corrected |
+| `BC_map_r1b_do010_s3_valfit.nc` | the 200-level per-cell map (the v3 BC map was never saved before) |
+
+**BC method.** The map is refit exactly as `bc_v3_test.py` does: per cell, on |hr_u, hr_v|
+(= P50), VAL window, vs RTMA. It reproduces the archived s3 `BCVAL_` file with max |diff| 0.
+It is applied **without refit** to 1940-2026 as the per-cell, per-hour ratio BC(P50)/P50 on
+**all five levels**, the same way the shipped BC scales u/v. **Only P50 is validated.**
+
+**Caveats.**
+- Pre-1979 ERA5 assimilates far fewer observations. Treat any trend across ~1979 with care.
+- The BC map is fitted on 2024-25 and assumed stationary over 86 years.
+- There is **no u/v or direction** in the one-file product. The ep7 `hr_u`/`hr_v` are in the
+  year files (`results/v1940_grids/r1b_do010_s3/`), so a u/v file is a CPU-only combine. The
+  ep27 direction head would need an extra inference pass.
+- Gust quantiles are only in the year files, unvalidated.
