@@ -412,11 +412,14 @@ It is applied **without refit** to 1940-2026 as the per-cell, per-hour ratio BC(
 - Gust quantiles are only in the year files, unvalidated.
 
 
-## 11. Observation-based bias adjustment (CNN-RTMA-BA) and the P50 products (2026-10-02)
+## 11. Observation-based bias adjustment (CNN-RTMA-BA) and the P50 products (2026-10-02/03)
 
 §10's BC maps the CNN onto **RTMA**, so it inherits RTMA's own bias against stations. This
 section replaces it with a correction fitted to **observations**, and adds the small
 single-level products (P50 speed + u + v) for both the raw and the adjusted field.
+**Rule (user decision 2026-10-03): the adjustment never reduces wind speed** — the factor is
+≥ 1 everywhere. The earlier unfloored version (which lowered the CNN by up to 27 % around the
+four central-Bay pier stations) was overwritten; its numbers survive only in git history.
 
 ### What the Era-3 stations said (2020-01-01 → 2026-08-10, 42 stations with data)
 
@@ -426,69 +429,75 @@ single-level products (P50 speed + u + v) for both the raw and the adjusted fiel
   be right at one speed; a factor is right across the range.
 - **The 90th percentile (10 % exceedance) is the stable anchor**: lowest year-to-year noise
   (~0.03), clear of the airport calm-reporting artefacts that scatter the ratios below the median.
-- **Station factors are not spatially correlated at first sight** — stations 3-6 km apart differ
-  by 28 %, stations 50 km apart by 24 % — which turned out to be two station pairs inside one
-  grid cell with conflicting factors (OKXC1/OMHC1 1.1 km, MZXC1/UPBC1 0.5 km). Pooled, the
-  neighbours do carry information (leave-one-out below).
+- **Station factors looked spatially uncorrelated at first** — stations 3-6 km apart differ by
+  28 %, stations 50 km apart by 24 % — which turned out to be two station pairs inside one grid
+  cell with conflicting factors (OKXC1/OMHC1 1.1 km, MZXC1/UPBC1 0.5 km). Pooled, the neighbours
+  do carry information (leave-one-out below).
 - **Anemometer heights were never applied.** `PWS_SOURCES` assigns 10 m to every IEM and NDBC
   station. The real metadata (`validation/reference/anemometer_heights.csv`, switch
   `VAL_STATION_HEIGHTS=1`, default off): NDBC heights are above *site* elevation, so the PORTS
   piers come out ≈10-11 m above water; TIBC1 15 m, PXOC1 19 m, UPBC1 100 m (bridge tower,
   CO-OPS: 328 ft), buoys 46026/46012 4.1 m. With heights the ocean factor moves 1.01 → 1.10.
+- Six stations have obs/CNN < 1 at the 90th percentile (TIBC1 0.73, PXOC1 0.75, RCMC1 0.76,
+  FTPC1 0.90, EDU 0.97, VCB 0.99). Under the never-reduce rule they get factor 1.00 and keep
+  their high bias.
 
-### Method (`scripts/ba_fit_factor.py`)
+### Method (`scripts/ba_fit_factor.py`, `--floor 1.0`)
 
-    f_s   = obs_P90 / cnn_P90 on paired hours, per station (obs log-law to 10 m)
-    c     = median f_s per class: land 1.257 (20 IEM) · bay 1.118 (16 NOS) · ocean 1.101 (2 buoys)
-    F(x)  = c(x) + Σ_i a_i exp(-d_i² / 2σ²),   a = K⁻¹ (f - c_sampled),   σ = 5 km
+    f_s   = max(1, obs_P90 / cnn_P90) on paired hours, per station (obs log-law to 10 m)
+    c     = median f_s per class: land 1.257 (20 IEM) · bay 1.118 (14 NOS, 2 pooled pairs) · ocean 1.101 (2 buoys)
+    F(x)  = max(1, c(x) + Σ_i a_i exp(-d_i² / 2σ²)),   a = K⁻¹ (f - c_sampled),   σ = 5 km
 
 - Gaussian radial-basis interpolation of the station residuals, **solved in the validation
   engine's bilinear-stencil space and in linear F**, so the field is exact at every station *as
-  the validation reads it* (0.00 % deviation at all 41 pooled stations). Away from stations it
-  decays to the class constant of the cell (class map: land / Bay polygon / ocean).
+  the validation reads it* (0.00 % deviation at the unfloored stations; ≤ 4.5 % at the six
+  floored ones, where the clip lifts the surrounding cells). Away from stations it decays to
+  the class constant of the cell (class map: land / Bay polygon / ocean).
 - Patches at **all 42 stations incl. the 4 USGS moorings** (user decision); the moorings do not
   enter the constants. WT_MW101/201 (same mooring) pooled; the two sub-cell pairs pooled.
 - σ chosen from a sweep (5/4/3.5/3/2.5 km): leave-one-station-out log-ratio RMSE
-  13.0/14.3/15.2/16.0/16.6 % vs 17.1 % with class constants alone → 5 km, the largest σ that
-  keeps the field within ±20 % of the station range (0.61-1.77; cells must dip below the lowest
-  station value 0.73 to hit it through a 4-cell stencil).
+  10.9/11.4/11.7/12.1/12.2 % vs 12.2 % with class constants alone → 5 km. Field range 1.00-1.70
+  (24 cells clipped to 1 at σ = 5 km).
 - Applied as **P50 × F, u × F, v × F** — direction unchanged. Map:
-  `v1940_product/BA_factor_map_r1b_do010_s3_E3q90.nc` (+ station CSV, `BA_LOSO.txt`, PNGs).
+  `v1940_product/BA_factor_map_r1b_do010_s3_E3q90.nc` (+ station CSV with `factor_raw` and
+  floored `factor`, `BA_LOSO.txt`, PNGs).
 
 ### Result — RTMA-SFbay vs CNN-RTMA vs CNN-RTMA-BA (pooled Murphy, 10 m speed, IEM+NDBC)
 
-`validation/run_validation_ba.slurm` (job 3785445), heights applied for every product, USGS as
+`validation/run_validation_ba.slurm` (job 3785455), heights applied for every product, USGS as
 its own group. q90/q99 = station median of model/obs at the 10 % / 1 % exceedance level.
 
 | era | stations | RTMA | CNN-RTMA | **CNN-RTMA-BA** | bias raw → BA | q90 raw → BA | q99 raw → BA |
 |---|---|---|---|---|---|---|---|
 | 1940-59 | 6 | — | 0.343 | **0.556** | −1.28 → −0.29 | 0.65 → 0.88 | 0.61 → 0.82 |
 | 1960-79 | 10 | — | 0.428 | **0.552** | −0.99 → −0.08 | 0.69 → 0.94 | 0.67 → 0.90 |
-| 1980-99 | 16 | — | 0.477 | **0.580** | −0.79 → +0.04 | 0.80 → 0.93 | 0.71 → 0.90 |
-| 2000-10 | 26 | — | 0.511 | **0.644** | −0.67 → −0.06 | 0.77 → 0.96 | 0.76 → 0.90 |
-| 2011-19 | 36 | 0.407 | 0.548 | **0.639** | −0.40 → +0.09 | 0.83 → 0.97 | 0.78 → 0.94 |
-| 2020-26 (fit era) | 38 | 0.588 | 0.573 | 0.659 (in-sample) · **0.611 LOSO** | −0.28 → +0.21 | 0.85 → 1.00 | 0.79 → 0.95 |
+| 1980-99 | 16 | — | 0.477 | **0.580** | −0.79 → +0.04 | 0.80 → 0.94 | 0.71 → 0.90 |
+| 2000-10 | 26 | — | 0.511 | **0.628** | −0.67 → −0.01 | 0.77 → 0.96 | 0.76 → 0.92 |
+| 2011-19 | 36 | 0.407 | 0.548 | **0.612** | −0.40 → +0.18 | 0.83 → 0.98 | 0.78 → 0.95 |
+| 2020-26 (fit era) | 38 | 0.588 | 0.573 | 0.623 (in-sample) · **0.577 LOSO** | −0.28 → +0.31 | 0.85 → 1.00 | 0.79 → 0.97 |
 
 - **E3 is in-sample for BA** (the factor is exact at every station there, q90 = 1.00 by
-  construction). The honest E3 number is the leave-one-station-out row: 0.611, still above RTMA
-  (0.588) and the raw CNN (0.573).
-- **E2 (2011-2019) is the clean test**: unseen in time, RTMA present. BA 0.639 vs raw 0.548 vs
-  RTMA 0.407. Energy-weighted (q = 3) station-mean skill +0.27 vs −0.16 raw vs −0.41 RTMA.
+  construction). The honest E3 number is the leave-one-station-out row: 0.577 — level with RTMA
+  (0.588) and the raw CNN (0.573), i.e. the floor gives away the E3 skill gain the unfloored
+  map had (0.611), because it leaves the central-Bay high bias in place.
+- **E2 (2011-2019) is the clean test**: unseen in time, RTMA present. BA 0.612 vs raw 0.548 vs
+  RTMA 0.407. Energy-weighted (q = 3) station-mean skill +0.31 vs −0.16 raw vs −0.41 RTMA.
 - **The factor transfers back to 1940.** Skill rises in every era and the large early low bias
   (−1.28 m/s in the 1940s) is mostly removed; the 1 % exceedance speed goes from ~0.6-0.8 of
-  observed to 0.82-0.95. Quote pre-1980 numbers with their station counts.
+  observed to 0.82-0.97. The price of the floor is a positive mean bias in the recent eras
+  (+0.18 m/s in E2, +0.31 in E3). Quote pre-1980 numbers with their station counts.
 - Direction RMSE is identical for CNN-RTMA and CNN-RTMA-BA (58.1°), as it must be.
-- USGS moorings (E3, in-sample): BA 0.570 vs RTMA 0.492 vs raw 0.446, bias −1.19 → −0.03.
+- USGS moorings (E3, in-sample): BA 0.570 vs RTMA 0.492 vs raw 0.446, bias −1.19 → −0.02.
 - Cross-era ranking: `validation/results/rankings_ba/` (`ba_summary.{csv,md,png}`,
   `combined_skill_weighted.csv`).
 
-### Products (`results/v1940_product/`, `scripts/make_p50_products.py`, job 3785330)
+### Products (`results/v1940_product/`, `scripts/make_p50_products.py`, jobs 3785330 / 3785454)
 
 | file | content |
 |---|---|
 | `CNN_RTMA_v3_r1b_do010_s3_P50_uvs_raw_19400101_20260810.nc` | `u10`, `v10`, `wind_speed` (P50 × direction; speed = P50 to 4e-4), hourly 1940-01-01T07 → 2026-08-10T02 (759,188 h), float32 zlib, chunks 24 h × full grid, 133.5 GB |
-| `CNN_RTMA_v3_r1b_do010_s3_P50_uvs_BA_19400101_20260810.nc` | the same × F(x) |
-| `BA_factor_map_r1b_do010_s3_E3q90.nc` | the factor, class map and station-weight fields |
+| `CNN_RTMA_v3_r1b_do010_s3_P50_uvs_BA_19400101_20260810.nc` | the same × F(x), F ≥ 1 everywhere |
+| `BA_factor_map_r1b_do010_s3_E3q90.nc` | the factor, class map and station-weight fields (attrs `floor`, constants, σ, stations) |
 
 The 5-level quantile files of §10 are unchanged (raw + RTMA-fitted BC).
 
@@ -496,8 +505,11 @@ The 5-level quantile files of §10 are unchanged (raw + RTMA-fitted BC).
 
 - E3 scores of BA are in-sample at the stations; one 6.6-year window is assumed stationary over
   86 years (the era table says it holds well, but siting and instruments changed).
+- The never-reduce floor is a product decision, not a fit result: at the four central-Bay pier
+  stations (TIBC1, RCMC1, PXOC1, FTPC1) the adjusted field stays 10-27 % high at the 90th
+  percentile, and the floored map's recent-era mean bias is positive.
 - The USGS factors rest on a 24 % log-law conversion from 1.2 m; EMC_MW101's patch rests on
-  ~80 days of data and sits next to four shoreline stations that pull the other way — the
-  central Bay is where the station evidence conflicts most.
+  ~80 days of data next to those four shoreline stations — the central Bay is where the station
+  evidence conflicts most.
 - The ocean constant comes from two buoys; most of the offshore grid is that constant.
 - Only P50 is corrected and validated; the quantile files are not BA-adjusted.

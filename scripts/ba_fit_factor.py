@@ -18,7 +18,12 @@ validation engine reads it (the user's requirement: no station keeps a bias),
 Gaussian decay to the class constant of the cell away from them. Stations
 closer than one grid cell are pooled first (the grid can carry one value
 there). sigma is taken from a sweep (2.5 / 3.5 / 5 km): the first that does
-not overshoot the station range by more than 10 %. Patches at ALL stations incl. the 4 USGS moorings (user decision
+not overshoot the station range by more than 10 %.
+
+FLOOR (user decision 2026-10-03): the adjustment NEVER reduces wind speed. Station
+factors below --floor (default 1.0) are raised to it before the fit, and the
+final field is clipped to >= floor. Six Era-3 stations had obs/CNN < 1 (TIBC1,
+RCMC1, PXOC1, FTPC1, EDU, VCB); they end up with factor 1, not a reduction. Patches at ALL stations incl. the 4 USGS moorings (user decision
 2026-10-02); the moorings do not enter the class constants (1.2 m anemometers,
 short records). WT_MW101 / WT_MW201 are the same mooring in consecutive
 deployments and are pooled.
@@ -298,6 +303,9 @@ def main():
                     help='comma list, largest first; all are diagnosed, the first that passes the '
                          'overshoot rule (field within the station range +-10 %%) is written')
     ap.add_argument('--min-pairs', type=int, default=1000)
+    ap.add_argument('--floor', type=float, default=1.0,
+                    help='never reduce wind speed: station factors and the field are clipped to '
+                         '>= this value (user decision 2026-10-03); 0 disables')
     ap.add_argument('--overshoot-pct', type=float, default=20.0,
                     help='allowed excursion of the field beyond the station factor range')
     ap.add_argument('--merge-km', type=float, default=2.5,
@@ -325,10 +333,16 @@ def main():
     pairs, groups = pair_stations(ds, tab, vmm, sink, a.min_pairs)
     pairs, groups = auto_merge(pairs, tab, groups, a.merge_km)
     T = station_table(pairs, groups, tab, a.level)
+    T['factor_raw'] = T['factor']
+    if a.floor > 0:
+        T['factor'] = T['factor'].clip(lower=a.floor)
+        clamped = T.index[T.factor_raw < a.floor]
+        print(f'  floor {a.floor:g}: never reduce wind speed -> {len(clamped)} station factors raised to '
+              f'{a.floor:g}: ' + ', '.join(f'{s} ({T.factor_raw[s]:.2f})' for s in clamped))
     pd.set_option('display.width', 250); pd.set_option('display.max_rows', 200)
-    print(f'\n  {len(T)} stations paired; factor = obs/CNN at q{a.level:.2f}')
+    print(f'\n  {len(T)} stations paired; factor = obs/CNN at q{a.level:.2f} (factor_raw = unfloored)')
     print(T[['klass', 'n_pairs', 'obs_mean', 'bias', 'r0.50', 'r0.75', 'r0.90', 'r0.95', 'r0.99',
-             'factor', 'factor_sd_years']].sort_values(['klass', 'factor'])
+             'factor_raw', 'factor', 'factor_sd_years']].sort_values(['klass', 'factor_raw'])
           .to_string(float_format=lambda v: f'{v:.3f}'))
 
     print('\n' + '=' * 78 + '\nSTEP 2  class constants (median of station factors, log space)\n' + '=' * 78)
@@ -354,7 +368,7 @@ def main():
     pred_cls = {}
     for sid, r in T.iterrows():
         c_others = class_constants(T.drop(sid), rng, nboot=2)
-        pred_cls[sid] = c_others['bay' if r.klass == 'usgs' else r.klass]['value']
+        pred_cls[sid] = max(c_others['bay' if r.klass == 'usgs' else r.klass]['value'], a.floor)
     y_true = np.log(T.factor.values)
     core = (T.klass != 'usgs').values
 
@@ -371,6 +385,10 @@ def main():
     for sigma in sigmas:
         print(f'\n--- sigma = {sigma:g} km')
         F, wsum, coef = factor_field(T, consts, cls, x, y, sigma, tab)
+        if a.floor > 0:
+            n_clip = int((F < a.floor).sum())
+            F = np.maximum(F, a.floor)         # the field itself never reduces wind speed
+            print(f'  floor {a.floor:g} applied to {n_clip} cells')
         if F.min() <= 0:
             sys.exit(f'STOP: factor field goes non-positive at sigma {sigma:g} km')
         logF = np.log(F)
@@ -384,7 +402,7 @@ def main():
             others = T.drop(sid)
             lf, _, _ = factor_field(others, class_constants(others, rng, nboot=2), cls, x, y,
                                     sigma, tab, quiet=True)
-            pred_gau[sid] = max(float(sample_stencil(lf, tab, sid)), 0.05)
+            pred_gau[sid] = max(float(sample_stencil(lf, tab, sid)), 0.05, a.floor)
         overshoot = (F.min() < lo_ok) or (F.max() > hi_ok)
         r_cls, r_cls_all = rmse_pct(pred_cls); r_gau, r_gau_all = rmse_pct(pred_gau)
         print(f'  field min {F.min():.3f} max {F.max():.3f} -> {"OVERSHOOT" if overshoot else "ok"}; '
@@ -433,6 +451,9 @@ def main():
         coords={'y': ls_coord(y), 'x': ls_coord(x)},
         attrs={'title': 'CNN-RTMA v3 observation-based factor correction (BA)',
                'seed': a.seed, 'anchor_quantile': a.level, 'sigma_km': a.sigma_km,
+               'floor': a.floor,
+               'floor_note': 'factor >= floor everywhere: the adjustment never reduces wind speed '
+                             '(stations where obs/CNN < floor get factor = floor)',
                'fit_window': f'{E3[0]} .. {E3[1][:10]}',
                'c_land': consts['land']['value'], 'c_bay': consts['bay']['value'],
                'c_ocean': consts['ocean']['value'],
@@ -474,7 +495,7 @@ def plot_maps(F, cls, wsum, x, y, T, consts, out, tag):
         ax.scatter(s.x_km, s.y_km, c=s.factor, cmap='RdBu_r', vmin=0.7, vmax=1.5, marker=m,
                    s=55, edgecolors='k', linewidths=0.8, label=c)
     ax.set_xlim(500, 640); ax.set_ylim(4120, 4280); ax.set_aspect('equal')
-    ax.set_title(f'BA factor F(x) ({tag}): land {consts["land"]["value"]:.2f} '
+    ax.set_title(f'BA factor F(x) ({tag}, floor 1 = never reduce): land {consts["land"]["value"]:.2f} '
                  f'bay {consts["bay"]["value"]:.2f} ocean {consts["ocean"]["value"]:.2f}')
     ax.legend(loc='lower left'); fig.colorbar(pc, ax=ax, label='obs / CNN at q0.90')
     fig.savefig(out / 'BA_factor_map.png', dpi=130, bbox_inches='tight'); plt.close(fig)

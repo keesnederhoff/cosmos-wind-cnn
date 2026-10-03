@@ -90,6 +90,10 @@ def main():
     ap.add_argument('--out-dir', default=str(CASE / 'results' / 'v1940_product'))
     ap.add_argument('--ba-map')
     ap.add_argument('--max-files', type=int, default=0, help='smoke test: first N year files only')
+    ap.add_argument('--only-ba', action='store_true',
+                    help='write only the BA file (the raw product does not depend on the map)')
+    ap.add_argument('--overwrite', action='store_true',
+                    help='replace an existing product of the same name (user-directed redo)')
     a = ap.parse_args()
     in_dir = Path(a.in_dir or CASE / 'results' / 'v1940_grids' / a.seed)
     out = Path(a.out_dir)
@@ -124,21 +128,30 @@ def main():
         'Conventions': 'CF-1.8',
     }
     common.update({f'model_{k}': v for k, v in prov.items()})
-    names = {k: out / f'CNN_RTMA_v3_{a.seed}_P50_uvs_{k}_{tag0}_{tag1}.nc' for k in ('raw', 'BA')}
+    kinds = ('BA',) if a.only_ba else ('raw', 'BA')
+    names = {k: out / f'CNN_RTMA_v3_{a.seed}_P50_uvs_{k}_{tag0}_{tag1}.nc' for k in kinds}
     for p in names.values():
-        if p.exists():
-            sys.exit(f'STOP: {p} exists -- refusing to overwrite a published product')
-    nc_raw = create(str(names['raw']) + '.tmp', first, common,
-                    'SF Bay 10 m wind, CNN-RTMA v3 P50 (raw)', {'bias_correction': 'none'})
-    nc_ba = create(str(names['BA']) + '.tmp', first, common,
-                   'SF Bay 10 m wind, CNN-RTMA v3 P50, observation-based bias adjustment (BA)',
-                   {'bias_correction': (
-                       'multiplicative factor per cell = obs/CNN at the 90th percentile, fitted at '
-                       f'{len(ba_attrs.get("stations", "").split(","))} stations over Era 3 '
-                       f'({ba_attrs.get("fit_window")}), exact at every station, decaying (sigma '
-                       f'{ba_attrs.get("sigma_km")} km) to class constants land {ba_attrs.get("c_land"):.3f} / '
-                       f'bay {ba_attrs.get("c_bay"):.3f} / ocean {ba_attrs.get("c_ocean"):.3f}; applied to '
-                       f'u10, v10 and wind_speed alike (direction unchanged). Map: {Path(ba_map).name}')})
+        if p.exists() and not a.overwrite:
+            sys.exit(f'STOP: {p} exists -- refusing to overwrite a published product (use --overwrite)')
+        elif p.exists():
+            print(f'  --overwrite: {p.name} will be replaced when the new file verifies')
+    floor = ba_attrs.get('floor', 0)
+    floor_txt = (f' Factor floored at {floor:g}: the adjustment never reduces wind speed.'
+                 if floor and float(floor) > 0 else '')
+    writers = {}
+    if 'raw' in kinds:
+        writers['raw'] = create(str(names['raw']) + '.tmp', first, common,
+                                'SF Bay 10 m wind, CNN-RTMA v3 P50 (raw)', {'bias_correction': 'none'})
+    writers['BA'] = create(str(names['BA']) + '.tmp', first, common,
+                           'SF Bay 10 m wind, CNN-RTMA v3 P50, observation-based bias adjustment (BA)',
+                           {'bias_correction': (
+                               'multiplicative factor per cell = obs/CNN at the 90th percentile, fitted at '
+                               f'{len(ba_attrs.get("stations", "").split(","))} stations over Era 3 '
+                               f'({ba_attrs.get("fit_window")}), exact at every station, decaying (sigma '
+                               f'{ba_attrs.get("sigma_km")} km) to class constants land {ba_attrs.get("c_land"):.3f} / '
+                               f'bay {ba_attrs.get("c_bay"):.3f} / ocean {ba_attrs.get("c_ocean"):.3f}; applied to '
+                               f'u10, v10 and wind_speed alike (direction unchanged).{floor_txt} '
+                               f'Map: {Path(ba_map).name}')})
     first.close()
 
     print('=' * 78 + f'\nstream {len(files)} year files -> {out}\n' + '=' * 78)
@@ -173,7 +186,8 @@ def main():
         tt = netCDF4.date2num(sub['time'].values.astype('datetime64[s]').astype(dt.datetime),
                               TUNITS, 'standard')
         i0, i1 = n_written, n_written + tt.size
-        for nc, fac in ((nc_raw, None), (nc_ba, F)):
+        for k, nc in writers.items():
+            fac = None if k == 'raw' else F
             nc['time'][i0:i1] = tt
             for name, arr in zip(FIELDS, (u, v, s)):
                 nc[name][i0:i1] = arr if fac is None else arr * fac[None]
@@ -183,7 +197,7 @@ def main():
         nanfrac = np.isnan(s).all(axis=(1, 2)).mean()
         print(f'  {Path(f).name}: +{tt.size} h -> {n_written} (dead steps {100 * nanfrac:.2f}%)', flush=True)
         ds.close()
-    for nc in (nc_raw, nc_ba):
+    for nc in writers.values():
         nc.close()
     print(f'  max |diff| in year-boundary overlaps: {worst:.2e}')
     if worst > 1e-4:
@@ -192,7 +206,7 @@ def main():
     print('=' * 78 + '\nverify\n' + '=' * 78)
     ok = True
     rng = np.random.default_rng(0)
-    for k in ('raw', 'BA'):
+    for k in kinds:
         tmp = str(names[k]) + '.tmp'
         d = xr.open_dataset(tmp)
         tv = d['time'].values
@@ -220,7 +234,7 @@ def main():
         d.close()
     if not ok:
         sys.exit('STOP: verification failed -- .tmp files left for inspection')
-    for k in ('raw', 'BA'):
+    for k in kinds:
         os.replace(str(names[k]) + '.tmp', names[k])
         print(f'  -> {names[k].name} ({os.path.getsize(names[k]) / 1e9:.1f} GB)')
     print('P50 PRODUCTS OK')
