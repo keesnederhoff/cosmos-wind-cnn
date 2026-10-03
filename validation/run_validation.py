@@ -82,11 +82,25 @@ CWOP_PLOT_SAMPLE  = 0       # CWOP stats-only (per-station figures for a sample 
 # no RTMA column beside it. That is a coverage difference, not a bias -- each
 # model is matched to observations independently -- but do not read the tail as
 # a CNN-vs-RTMA result.
+
+def _product_present(cfg):
+    """True if a MODELS entry's primary data exists (single/multi-file or box)."""
+    p = cfg.get('u_file') or cfg.get('data_dir')
+    return p is not None and Path(p).exists()
+
+
 _E3_END = os.environ.get('VAL_ERA_END', '2026-08-11')
 _ERA_TR = {
-    'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010', ['ERA5', 'CONUS404']),
-    'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019', ['ERA5', 'CONUS404', 'RTMA-SFbay']),
-    'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026', ['ERA5', 'RTMA-SFbay']),
+    # 2026-08-29 products-comparison: full reference field per era, each product
+    # only in eras it (mostly) covers. Sup3rWind (2007-2013) is PARTIAL in both
+    # E1 and E2; HRRR (Oct 2014+) partial in E2. UCLA/CONUS404/NOW-23 end
+    # 2020/2021/2022 -> excluded from E3 rather than scored on <=2 of 6.6 yr.
+    'E1': (('2000-01-01', '2011-01-01'), 'obsE1_2000-2010',
+           ['ERA5', 'CONUS404', 'UCLA', 'NOW-23', 'Sup3rWind']),
+    'E2': (('2011-01-01', '2020-01-01'), 'obsE2_2011-2019',
+           ['ERA5', 'CONUS404', 'RTMA-SFbay', 'HRRR', 'UCLA', 'NOW-23', 'Sup3rWind']),
+    'E3': (('2020-01-01', _E3_END), 'obsE3_2020-2026',
+           ['ERA5', 'RTMA-SFbay', 'HRRR']),
     # Full-record eras (2026-09-29, the 1940-2026 product). ERA5 is the only
     # gridded reference before 1979; CONUS404 starts 1979, so it enters E0 only.
     # Station counts thin out fast: ~6 IEM in 1940-59, 10 in 1960-79, no NDBC
@@ -112,9 +126,17 @@ if ERA in _ERA_TR:
         _cnn = list(_V40) + ([] if _pre2000 else ['V3-ERAS-s3'])
     elif _pre2000:
         _cnn = list(_V40)          # the V3-ERAS arms start in 2000
+    elif config.MODELS['CNN-quantile-v3']['data_dir'].exists():
+        _cnn = ['CNN-quantile-v3']  # Windows data home (2026-08-29 products comparison)
     else:
-        _cnn = list(_VE)
-    models = _cnn + _refs
+        _cnn = list(_VE)           # Caldera: the three recipe seeds
+    # Reference products that are not staged in this environment (HRRR, UCLA,
+    # NOW-23, Sup3rWind live on the Windows side only) are dropped here, loudly,
+    # instead of failing the path audit one by one.
+    _missing = [m for m in _refs if not _product_present(config.MODELS[m])]
+    if _missing:
+        print(f"references not staged here, skipped: {_missing}", flush=True)
+    models = _cnn + [m for m in _refs if m not in _missing]
 elif ERA == 'V3':
     # v3 held-out test window. Product list is built from config.V3_MODELS so it
     # cannot drift from what config.py actually defines, plus ERA5 and RTMA as
