@@ -104,7 +104,11 @@ if ERA in _ERA_TR:
     from config import V3_ERA_MODELS as _VE, V3_1940_MODELS as _V40
     tr, outdir, _refs = _ERA_TR[ERA]
     _pre2000 = ERA in ('Em2', 'Em1', 'E0')
-    if _ERA_SET == '1940':
+    if _ERA_SET == 'ba':
+        # P50 raw + observation-based BA products (2026-10-02); refs unchanged
+        from config import P50_MODELS as _PBA
+        _cnn = list(_PBA)
+    elif _ERA_SET == '1940':
         _cnn = list(_V40) + ([] if _pre2000 else ['V3-ERAS-s3'])
     elif _pre2000:
         _cnn = list(_V40)          # the V3-ERAS arms start in 2000

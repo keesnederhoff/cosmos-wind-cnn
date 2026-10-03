@@ -1,0 +1,21 @@
+station_id,group,anem_above_site_m,site_elev_msl_m,height_used_m,source,checked,note
+TIBC1,NDBC,10.0,5.0,15.0,ndbc.noaa.gov/station_page.php?station=tibc1,2026-10-02,CeNCOOS Tiburon pier; height above water = anemometer + site elevation
+RCMC1,NDBC,7.2,2.8,10.0,ndbc + CO-OPS mdapi 9414863 (23.45 ft),2026-10-02,PORTS Richmond
+PXOC1,NDBC,16.2,,19.2,ndbc + CO-OPS mdapi 9414311 (53.15 ft),2026-10-02,PORTS SF Pier 1; site elevation not given -> 3.0 m deck assumed
+FTPC1,NDBC,7.4,2.7,10.1,ndbc.noaa.gov/station_page.php?station=ftpc1,2026-10-02,NOS Fort Point
+OKXC1,NDBC,7.6,,10.6,ndbc.noaa.gov/station_page.php?station=okxc1,2026-10-02,PORTS Oakland Berth 34; site elevation not given -> 3.0 m assumed
+LNDC1,NDBC,7.6,,10.6,ndbc.noaa.gov/station_page.php?station=lndc1,2026-10-02,PORTS Oakland Berth 67; site elevation not given -> 3.0 m assumed
+AAMC1,NDBC,6.9,3.5,10.4,ndbc.noaa.gov/station_page.php?station=aamc1,2026-10-02,NOS Alameda
+SFXC1,NDBC,7.5,2.74,10.2,ndbc.noaa.gov/station_page.php?station=sfxc1,2026-10-02,NERRS Rush Ranch (marsh); only 1084 h in Era 3
+PSBC1,NDBC,7.6,,10.6,ndbc.noaa.gov/station_page.php?station=psbc1,2026-10-02,PORTS Pittsburg; site elevation not given -> 3.0 m assumed
+RTYC1,NDBC,7.6,3.1,10.7,ndbc.noaa.gov/station_page.php?station=rtyc1,2026-10-02,PORTS Redwood City
+DPXC1,NDBC,7.6,,10.6,ndbc.noaa.gov/station_page.php?station=dpxc1,2026-10-02,PORTS Davis Point; site elevation not given -> 3.0 m assumed
+MZXC1,NDBC,6.4,4.0,10.4,ndbc.noaa.gov/station_page.php?station=mzxc1,2026-10-02,PORTS Martinez-Amorco pier
+OMHC1,NDBC,6.7,,9.7,ndbc.noaa.gov/station_page.php?station=omhc1,2026-10-02,PORTS Oakland Middle Harbor; site elevation not given -> 3.0 m assumed
+PCOC1,NDBC,8.4,2.8,11.2,ndbc.noaa.gov/station_page.php?station=pcoc1,2026-10-02,NOS Port Chicago
+UPBC1,NDBC,100.0,0.0,100.0,ndbc + CO-OPS mdapi 9415118 (328.08 ft),2026-10-02,PORTS Union Pacific RR bridge Martinez; sensor on bridge tower; log law over 100 m is a stretch
+PPXC1,NDBC,,,10.0,ndbc + CO-OPS mdapi 9414847 (elevation null),2026-10-02,PORTS Point Potrero; no height published anywhere -> 10 m default kept
+46026,NDBC,4.1,0.0,4.1,ndbc.noaa.gov/station_page.php?station=46026,2026-10-02,NDBC 3-m foam buoy 18 NM W of SF
+46012,NDBC,4.1,0.0,4.1,ndbc.noaa.gov/station_page.php?station=46012 (current page says USV 1.3 m),2026-10-02,NDBC Half Moon Bay; 3-m buoy (4.1 m) for the archive years; current platform is an uncrewed surface vehicle at 1.3 m
+PXSC1,NDBC,,,10.0,ndbc.noaa.gov/station_page.php?station=pxsc1,2026-10-02,PORTS Pier 17; no anemometer height published; no Era 3 wind data
+OBXC1,NDBC,,,10.0,ndbc.noaa.gov/station_page.php?station=obxc1,2026-10-02,PORTS Oakland Berth 38; no anemometer height published; no Era 3 wind data

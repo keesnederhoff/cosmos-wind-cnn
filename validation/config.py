@@ -471,3 +471,22 @@ for _sd, _run in [('s3', 'r1b_do010_s3')]:
     }
     MODEL_COLORS[_lab] = '#d62728'
     V3_1940_MODELS.append(_lab)
+
+# ---- P50 products, raw and observation-based bias adjustment (2026-10-02) --
+# scripts/make_p50_products.py writes ONE file per product with u10 / v10 /
+# wind_speed (CNN P50 x direction) for 1940-01-01 -> 2026-08-10.
+#   CNN-RTMA    = the raw P50; reproduces V3-1940-s3 to rounding.
+#   CNN-RTMA-BA = x BA_factor_map (scripts/ba_fit_factor.py): obs/CNN at the
+#                 90th percentile per station over Era 3, exact at every
+#                 station, land / bay / ocean constants elsewhere. Era 3 scores
+#                 of this product are IN-SAMPLE at the stations by construction;
+#                 E2 (2011-2019, RTMA present) is the honest comparison.
+_P50_DIR = _V3_RESULTS / 'v1940_product'
+P50_MODELS = []
+for _lab, _kind in (('CNN-RTMA', 'raw'), ('CNN-RTMA-BA', 'BA')):
+    _f = _P50_DIR / f'CNN_RTMA_v3_r1b_do010_s3_P50_uvs_{_kind}_19400101_20260810.nc'
+    MODELS[_lab] = {'u_file': _f, 'v_file': _f, 'u_var': 'u10', 'v_var': 'v10',
+                    'single_file': True}
+    P50_MODELS.append(_lab)
+MODEL_COLORS['CNN-RTMA']    = '#d62728'
+MODEL_COLORS['CNN-RTMA-BA'] = 'darkviolet'

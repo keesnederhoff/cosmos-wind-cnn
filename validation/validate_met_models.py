@@ -76,9 +76,35 @@ def audit_model_paths(models_to_run):
 # remain here.
 
 
+_HEIGHTS_CSV = Path(__file__).resolve().parent / 'reference' / 'anemometer_heights.csv'
+
+
+def _station_height_overrides():
+    """Per-station anemometer height (m above the water surface) from
+    reference/anemometer_heights.csv, keyed by upper-case NDBC id.
+
+    Active only when VAL_STATION_HEIGHTS=1 -- default OFF so every published
+    validation number still reproduces. PWS_SOURCES carries one nominal height
+    per group (10 m); the CSV holds the real NDBC / CO-OPS metadata (e.g. 46026
+    buoy 4.1 m, TIBC1 15 m, UPBC1 bridge tower 100 m).
+    """
+    import os
+    if os.environ.get('VAL_STATION_HEIGHTS', '0') != '1':
+        return {}
+    if not _HEIGHTS_CSV.exists():
+        print(f"  WARNING: VAL_STATION_HEIGHTS=1 but {_HEIGHTS_CSV} is missing -- group defaults used")
+        return {}
+    df = pd.read_csv(_HEIGHTS_CSV)
+    out = {str(r.station_id).upper(): float(r.height_used_m)
+           for r in df.itertuples() if np.isfinite(r.height_used_m)}
+    print(f"  station anemometer-height overrides: {len(out)} from {_HEIGHTS_CSV.name}")
+    return out
+
+
 def build_pws_stations():
     """Enumerate stations (those with any wind data) from the 3 archive NetCDFs."""
     out = {}
+    overrides = _station_height_overrides()
     for group, fp, height in PWS_SOURCES:
         if group not in config.STATION_GROUPS:
             continue
@@ -110,7 +136,7 @@ def build_pws_stations():
                 'source': 'pws', 'group': group,
                 'file_path': fp, 'file_station_id': fid,
                 'lat': float(lats[i]), 'lon': float(lons[i]),
-                'anemometer_height_m': height,
+                'anemometer_height_m': overrides.get(str(fid).upper(), height),
             }
         ds.close()
     n = {g: sum(v['group'] == g for v in out.values()) for g in ('IEM', 'NDBC', 'CWOP')}
@@ -1753,7 +1779,19 @@ def calculate_statistics(model, obs):
         'skill_ew_u3': float(skill_ew_u3),
         'model_mean': float(np.mean(mc)), 'obs_mean': float(obs_mean),
         'model_std': float(np.std(mc)), 'obs_std': float(obs_std),
+        # Distributional exceedance check (2026-10-02): model quantile / obs
+        # quantile at the 10 % and 1 % exceedance level. Unlike the top-10 %
+        # block (conditioned on the OBSERVED top decile, so it carries timing
+        # error) this compares the two climatologies directly; 1.0 = the model
+        # reaches the observed 10 % / 1 % exceedance speed.
+        'q90_ratio': float(_q_ratio(mc, oc, 0.90)),
+        'q99_ratio': float(_q_ratio(mc, oc, 0.99)),
     }
+
+
+def _q_ratio(mc, oc, q):
+    o = np.quantile(oc, q)
+    return np.quantile(mc, q) / o if o > 0 else np.nan
 
 
 def calculate_circular_statistics(model_dir, obs_dir):
@@ -3370,7 +3408,8 @@ def main():
         numeric_cols = ['n', 'bias', 'rmse', 'mae', 'corr', 'r2', 'nrmse',
                         'scatter_index', 'rel_bias', 'skill',
                         'skill_ew_u1', 'skill_ew', 'skill_ew_u3',
-                        'model_mean', 'obs_mean', 'model_std', 'obs_std']
+                        'model_mean', 'obs_mean', 'model_std', 'obs_std',
+                        'q90_ratio', 'q99_ratio']
 
         def _mean_row(sub, label, **extra):
             row = {'station': label, **extra}
