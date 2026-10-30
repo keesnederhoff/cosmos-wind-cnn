@@ -105,6 +105,10 @@ _ERA_TR = {
     # gridded reference before 1979; CONUS404 starts 1979, so it enters E0 only.
     # Station counts thin out fast: ~6 IEM in 1940-59, 10 in 1960-79, no NDBC
     # before 1980 -- quote every pre-2000 number with its station count.
+    # v4 (2026-10): WY2026 HOLD-OUT, the v4 test year (2025-10-01 -> record end).
+    # Ends 2026-08-10 so the v3 products (which stop there) are scored like-for-like
+    # on the SAME window and stations; v3 never trained on any of it.
+    'V4T': (('2025-10-01', '2026-08-11'), 'obsV4T_WY2026', ['ERA5', 'RTMA-SFbay']),
     'Em2': (('1940-01-01', '1960-01-01'), 'obsEm2_1940-1959', ['ERA5']),
     'Em1': (('1960-01-01', '1980-01-01'), 'obsEm1_1960-1979', ['ERA5']),
     'E0':  (('1980-01-01', '2000-01-01'), 'obsE0_1980-1999', ['ERA5', 'CONUS404']),
@@ -114,6 +118,12 @@ _ERA_TR = {
 # product reproduces bit-for-bit -- any score gap between the two is a red flag.
 # Unset keeps the 2026-08 era runs exactly as they were.
 _ERA_SET = os.environ.get('VAL_ERA_SET', '')
+# 'EY' = one calendar year, VAL_Y0=<year>: the per-year RTMA skill report that
+# locates the RTMA quality break (non-gating side job of the v4 chain). Run with
+# VAL_MODELS=ERA5,RTMA-SFbay so only the references are scored.
+if ERA == 'EY':
+    _y0 = int(os.environ['VAL_Y0'])
+    _ERA_TR['EY'] = ((f'{_y0}-01-01', f'{_y0 + 1}-01-01'), f'obsEY_{_y0}', ['ERA5', 'RTMA-SFbay'])
 if ERA in _ERA_TR:
     from config import V3_ERA_MODELS as _VE, V3_1940_MODELS as _V40
     tr, outdir, _refs = _ERA_TR[ERA]
@@ -122,6 +132,10 @@ if ERA in _ERA_TR:
         # P50 raw + observation-based BA products (2026-10-02); refs unchanged
         from config import P50_MODELS as _PBA
         _cnn = list(_PBA)
+    elif _ERA_SET == 'v4':
+        # v4 P50 raw + BA beside the v3 P50 raw + BA (2026-10 rebuild)
+        from config import P50_MODELS as _PBA3, V4_P50_MODELS as _PV4
+        _cnn = list(_PV4) + list(_PBA3)
     elif _ERA_SET == '1940':
         _cnn = list(_V40) + ([] if _pre2000 else ['V3-ERAS-s3'])
     elif _pre2000:

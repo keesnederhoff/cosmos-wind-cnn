@@ -523,6 +523,28 @@ for _lab, _kind in (('CNN-RTMA', 'raw'), ('CNN-RTMA-BA', 'BA')):
 MODEL_COLORS['CNN-RTMA']    = '#d62728'
 MODEL_COLORS['CNN-RTMA-BA'] = 'darkviolet'
 
+# ---- v4 rebuild (2026-10): P50 raw + BA products of the chosen v4 seed -------
+# scripts/make_p50_products.py with CNN_CASE=sf_bay_rtma_v4 writes
+# CNN_RTMA_v4_<seed>_P50_uvs_{raw,BA}_19400101_<end>.nc into v1940_product/. The
+# seed is whatever select_seed_points.py wrote to results/chosen_seed.txt; the end
+# tag is found by glob so a record-end change cannot silently orphan the entry.
+# ERA_SET=v4 puts these beside the v3 products (CNN-RTMA / CNN-RTMA-BA above) so
+# every era table shows v4 against v3 directly.
+_V4_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
+                   '/sf_bay_rtma_v4/results')
+_V4_PROD = _V4_RESULTS / 'v1940_product'
+_v4_seed_f = _V4_RESULTS / 'chosen_seed.txt'
+V4_SEED = _v4_seed_f.read_text().strip() if _v4_seed_f.exists() else 'v4_s1'
+V4_P50_MODELS = []
+for _lab, _kind in (('V4-RTMA', 'raw'), ('V4-RTMA-BA', 'BA')):
+    _hits = sorted(_V4_PROD.glob(f'CNN_RTMA_v4_{V4_SEED}_P50_uvs_{_kind}_19400101_*.nc'))
+    _f = _hits[-1] if _hits else _V4_PROD / f'CNN_RTMA_v4_{V4_SEED}_P50_uvs_{_kind}_19400101_NOTYET.nc'
+    MODELS[_lab] = {'u_file': _f, 'v_file': _f, 'u_var': 'u10', 'v_var': 'v10',
+                    'single_file': True}
+    V4_P50_MODELS.append(_lab)
+MODEL_COLORS['V4-RTMA']    = '#1f77b4'
+MODEL_COLORS['V4-RTMA-BA'] = '#2ca02c'
+
 # ---- CNN-quantile-v3: single-arm full-record inference (2026-08-27 request).
 # Same multifile layout/caveat as V3_ERA_MODELS above (one arm, not three
 # seeds), staged locally rather than on Caldera -- lives directly under

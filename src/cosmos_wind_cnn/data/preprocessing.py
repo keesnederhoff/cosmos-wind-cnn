@@ -412,7 +412,8 @@ class NetCDFPreprocessor:
         train_ratio: float = 0.7,
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
-        split_dates: Dict = None
+        split_dates: Dict = None,
+        gap_hours: float = 0
     ) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
         """
         Split dataset chronologically (maintains lazy loading).
@@ -424,6 +425,13 @@ class NetCDFPreprocessor:
         help?" control built that way confounds data volume with recency.
         Pinning the boundaries by date holds val/test fixed so only the train
         start moves. Absent the key, behaviour is the ratio path unchanged.
+
+        gap_hours -- optional decorrelation buffer (default 0 = unchanged). The
+        LAST gap_hours of train and of val are dropped, so val and test keep
+        their exact start dates (comparable across studies) while the weather
+        in neighbouring splits is separated by at least that long. Splits are
+        written as separate files, so no model window straddles a boundary
+        either way; the gap only guards against synoptic autocorrelation.
         """
         n_times = len(ds.time)
 
@@ -449,8 +457,17 @@ class NetCDFPreprocessor:
             train_end = int(n_times * train_ratio)
             val_end = int(n_times * (train_ratio + val_ratio))
 
-        train_ds = ds.isel(time=slice(0, train_end))
-        val_ds = ds.isel(time=slice(train_end, val_end))
+        gap = 0
+        if gap_hours:
+            _dt_h = float((ds.time.values[1] - ds.time.values[0]) / np.timedelta64(1, 'h'))
+            gap = int(round(float(gap_hours) / _dt_h))
+            if gap and not (0 < gap < train_end and train_end + gap < val_end):
+                raise ValueError(f"gap_hours={gap_hours} ({gap} steps) does not fit "
+                                 f"train_end={train_end}, val_end={val_end}")
+            print(f"  gap_hours={gap_hours}: dropping the last {gap} steps of train and of val")
+
+        train_ds = ds.isel(time=slice(0, train_end - gap))
+        val_ds = ds.isel(time=slice(train_end, val_end - gap))
         test_ds = ds.isel(time=slice(val_end, None))
 
         print(f"\nDataset split:")

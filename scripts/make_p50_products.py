@@ -30,7 +30,20 @@ import numpy as np
 import xarray as xr
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-CASE = ROOT / 'sf_bay_rtma_v3'
+# v3 defaults; the v4 chain sets CNN_CASE / CNN_PREFIX (and omits --seed: the pick is read
+# from <case>/results/chosen_seed.txt written by select_seed_points.py).
+CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA_v3')
+VER = PREFIX.split('_')[-1]
+
+
+def _default_seed():
+    p = CASE / 'results' / 'chosen_seed.txt'
+    if os.environ.get('CNN_CASE') and p.exists():
+        return p.read_text().strip()
+    return 'r1b_do010_s3'
+
+
 TUNITS = 'hours since 1940-01-01 00:00:00'
 FIELDS = ('u10', 'v10', 'wind_speed')
 
@@ -40,6 +53,33 @@ def year_files(in_dir):
     if not files:
         sys.exit(f'STOP: no year files in {in_dir}')
     return files
+
+
+def direction_file(speed_file, dir_dir):
+    """The direction-track year file for the same window (direction_full_record_*)."""
+    p = Path(dir_dir) / Path(speed_file).name.replace('speed_full_record_', 'direction_full_record_', 1)
+    if not p.exists():
+        sys.exit(f'STOP: direction-track file missing: {p}')
+    return p
+
+
+def uv_fields(sub, dsub):
+    """u, v, speed for one block: speed (P50) from the speed track; direction from
+    the direction track's u/v (unit vector). Where the direction track has no
+    direction (|uv| ~ 0 or NaN) the speed track's own direction is kept."""
+    u = sub['hr_u'].values.astype('float32')
+    v = sub['hr_v'].values.astype('float32')
+    s = np.sqrt(u ** 2 + v ** 2)
+    if dsub is None:
+        return u, v, s
+    du = dsub['hr_u'].values.astype('float32')
+    dv = dsub['hr_v'].values.astype('float32')
+    dn = np.sqrt(du ** 2 + dv ** 2)
+    good = np.isfinite(dn) & (dn > 1e-3)
+    sn = np.where(s > 0, s, 1.0)
+    un = np.where(good, du / np.where(good, dn, 1.0), u / sn)
+    vn = np.where(good, dv / np.where(good, dn, 1.0), v / sn)
+    return (s * un).astype('float32'), (s * vn).astype('float32'), s
 
 
 def load_factor(path, like):
@@ -85,11 +125,14 @@ def create(path, like, t_attrs, title, extra):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--seed', default='r1b_do010_s3')
+    ap.add_argument('--seed', default=_default_seed())
     ap.add_argument('--in-dir')
     ap.add_argument('--out-dir', default=str(CASE / 'results' / 'v1940_product'))
     ap.add_argument('--ba-map')
     ap.add_argument('--max-files', type=int, default=0, help='smoke test: first N year files only')
+    ap.add_argument('--dir-dir', help='directory with direction_full_record_*.nc year files '
+                                      '(best_direction.pth track); direction is taken from them, '
+                                      'speed stays the speed track P50')
     ap.add_argument('--only-ba', action='store_true',
                     help='write only the BA file (the raw product does not depend on the map)')
     ap.add_argument('--overwrite', action='store_true',
@@ -115,12 +158,23 @@ def main():
     tag1 = str(last['time'].values[-1])[:10].replace('-', '')
     last.close()
     prov = {k: v for k, v in first.attrs.items() if isinstance(v, (str, int, float))}
+    dir_dir = Path(a.dir_dir) if a.dir_dir else None
+    if dir_dir:
+        for f in files:
+            direction_file(f, dir_dir)                 # all present before any write
+        print(f'  direction from {dir_dir} (best_direction.pth track); speed from the speed track')
     common = {
         'institution': 'USGS Pacific Coastal and Marine Science Center',
-        'source': ('cosmos-wind-cnn v3 quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
-                   'downscaling; seed ' + a.seed + ', checkpoint best_speed.pth'),
-        'inputs': ('ERA5 10 m u/v, cloud fraction, wind gust (border-filled as in '
-                   'training), RTMA terrain; staged by scripts/stage_era5_1940.py'),
+        'source': (f'cosmos-wind-cnn {VER} quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
+                   'downscaling; seed ' + a.seed + ', speed from checkpoint best_speed.pth'
+                   + (', direction from checkpoint best_direction.pth (epoch 27, best on stations)'
+                      if dir_dir else ' (speed and direction)')),
+        'inputs': (('ERA5 10 m u/v, cloud fraction, wind gust (border-filled as in '
+                    'training), RTMA terrain; staged by scripts/stage_era5_1940.py')
+                   if VER == 'v3' else
+                   ('ERA5 10 m u/v, cloud fraction, wind gust (as delivered, 2026-10 '
+                    'drop, no border fill), RTMA terrain; target RTMA u/v rotated to '
+                    'earth-relative (rotate_rtma_earthrel.py)')),
         'caveats': ('Pre-1979 ERA5 assimilates far fewer observations; station skill '
                     'rises from ~0.34 (1940s) to ~0.57 (2020s). Hours without a full '
                     'ERA5 input window (annual 7 h gust seam) are NaN.'),
@@ -129,7 +183,7 @@ def main():
     }
     common.update({f'model_{k}': v for k, v in prov.items()})
     kinds = ('BA',) if a.only_ba else ('raw', 'BA')
-    names = {k: out / f'CNN_RTMA_v3_{a.seed}_P50_uvs_{k}_{tag0}_{tag1}.nc' for k in kinds}
+    names = {k: out / f'{PREFIX}_{a.seed}_P50_uvs_{k}_{tag0}_{tag1}.nc' for k in kinds}
     for p in names.values():
         if p.exists() and not a.overwrite:
             sys.exit(f'STOP: {p} exists -- refusing to overwrite a published product (use --overwrite)')
@@ -141,9 +195,9 @@ def main():
     writers = {}
     if 'raw' in kinds:
         writers['raw'] = create(str(names['raw']) + '.tmp', first, common,
-                                'SF Bay 10 m wind, CNN-RTMA v3 P50 (raw)', {'bias_correction': 'none'})
+                                f'SF Bay 10 m wind, CNN-RTMA {VER} P50 (raw)', {'bias_correction': 'none'})
     writers['BA'] = create(str(names['BA']) + '.tmp', first, common,
-                           'SF Bay 10 m wind, CNN-RTMA v3 P50, observation-based bias adjustment (BA)',
+                           f'SF Bay 10 m wind, CNN-RTMA {VER} P50, observation-based bias adjustment (BA)',
                            {'bias_correction': (
                                'multiplicative factor per cell = obs/CNN at the 90th percentile, fitted at '
                                f'{len(ba_attrs.get("stations", "").split(","))} stations over Era 3 '
@@ -173,9 +227,13 @@ def main():
             if gap != 1:
                 sys.exit(f'STOP: {Path(f).name} leaves a {gap} h step after {t_last}')
         sub = ds.isel(time=np.where(keep)[0])
-        u = sub['hr_u'].values.astype('float32')
-        v = sub['hr_v'].values.astype('float32')
-        s = np.sqrt(u ** 2 + v ** 2)
+        dsub = None
+        if dir_dir:
+            dds = xr.open_dataset(direction_file(f, dir_dir))
+            if not np.array_equal(dds['time'].values, t):
+                sys.exit(f'STOP: direction-track time axis differs for {Path(f).name}')
+            dsub = dds.isel(time=np.where(keep)[0])
+        u, v, s = uv_fields(sub, dsub)
         if n_written == 0:                            # speed from u/v must be the P50 level
             q50 = sub['hr_speed_q'].values[:, iq].astype('float32')
             both = np.isfinite(q50) & np.isfinite(s)
@@ -197,6 +255,8 @@ def main():
         nanfrac = np.isnan(s).all(axis=(1, 2)).mean()
         print(f'  {Path(f).name}: +{tt.size} h -> {n_written} (dead steps {100 * nanfrac:.2f}%)', flush=True)
         ds.close()
+        if dsub is not None:
+            dds.close()
     for nc in writers.values():
         nc.close()
     print(f'  max |diff| in year-boundary overlaps: {worst:.2e}')
@@ -220,8 +280,9 @@ def main():
             day = src['time'].values[rng.integers(24, src['time'].size - 48)]
             win = slice(day, day + np.timedelta64(23, 'h'))
             ss = src.sel(time=win)
-            uu, vv = ss['hr_u'].values, ss['hr_v'].values
-            want = {'u10': uu, 'v10': vv, 'wind_speed': np.sqrt(uu ** 2 + vv ** 2)}
+            dss = xr.open_dataset(direction_file(f, dir_dir)).sel(time=win) if dir_dir else None
+            uu, vv, sp = uv_fields(ss, dss)
+            want = {'u10': uu, 'v10': vv, 'wind_speed': sp}
             for name in FIELDS:
                 w = want[name] if k == 'raw' else want[name] * F[None]
                 got = d[name].sel(time=win).values

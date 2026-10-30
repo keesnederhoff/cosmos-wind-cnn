@@ -37,10 +37,26 @@ sys.path.insert(0, str(HERE))
 from bias_correct import fit_quantile_maps, apply_maps  # noqa: E402
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-CASE = ROOT / 'sf_bay_rtma_v3'
-SHARED = CASE / 'results' / 'v3data' / 'data_processed'
-VAL_FILE = 'speed_full_record_ERA5_20240314_20250206.nc'
-TEST_FILE = 'speed_full_record_ERA5_20250206_20260101.nc'
+# Everything below defaults to the v3 product; the v4 chain overrides via env so the
+# v3 numbers stay reproducible from this very script.
+CASE_NAME = os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+CASE = ROOT / CASE_NAME
+SHARED = CASE / 'results' / os.environ.get('CNN_STORE', 'v3data') / 'data_processed'
+VAL_WIN = os.environ.get('CNN_VAL_WIN', '20240314_20250206')     # BC fit window
+TEST_WIN = os.environ.get('CNN_TEST_WIN', '20250206_20260101')   # held-out window
+VAL_FILE = f'speed_full_record_ERA5_{VAL_WIN}.nc'
+TEST_FILE = f'speed_full_record_ERA5_{TEST_WIN}.nc'
+PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA_v3')
+VER = PREFIX.split('_')[-1]                                      # 'v3' / 'v4'
+NQ_HEAD = int(os.environ.get('CNN_NQ', '19'))
+# v3 had an archived BCVAL_ file to reproduce; v4 has none. CNN_BC_PROOF=0 swaps the
+# reproduction proof for a self-consistency check (finite, sane ratios) on TEST.
+BC_PROOF = os.environ.get('CNN_BC_PROOF', '1') != '0'
+
+
+def _win_txt(w):
+    a, b = w.split('_')
+    return f'{a[:4]}-{a[4:6]}-{a[6:]}..{b[:4]}-{b[4:6]}-{b[6:]}'
 NQUANT = 200
 EPS = 1e-6                        # bc_v3_test.py / bias_correct.py convention
 TUNITS = 'hours since 1940-01-01 00:00:00'
@@ -60,7 +76,7 @@ def fit_and_prove(seed, map_path):
     inf_dir = CASE / 'results' / seed / 'output_inference'
     vp, tp = inf_dir / VAL_FILE, inf_dir / TEST_FILE
     bp = inf_dir / f'BCVAL_{TEST_FILE}'
-    for p in (vp, tp, bp):
+    for p in ((vp, tp, bp) if BC_PROOF else (vp, tp)):
         if not p.exists():
             sys.exit(f'STOP: missing {p}')
     inf_val = xr.open_dataset(vp)
@@ -78,23 +94,45 @@ def fit_and_prove(seed, map_path):
     u = it['hr_u'].values.astype('float32')
     v = it['hr_v'].values.astype('float32')
     r = bc_ratio(np.sqrt(u ** 2 + v ** 2), cnn_q, rtma_q)
-    arch = xr.open_dataset(bp)
-    du = np.abs(u * r - arch['hr_u'].values)
-    dv = np.abs(v * r - arch['hr_v'].values)
-    mx = float(np.nanmax([np.nanmax(du), np.nanmax(dv)]))
-    nanm = int((np.isnan(u * r) ^ np.isnan(arch['hr_u'].values)).sum())
-    print(f'  BC PROOF vs {bp.name}: max|diff| u/v {mx:.3e}, NaN mismatch {nanm}')
-    if not (mx < 1e-4 and nanm == 0):
-        sys.exit('STOP: refitted BC map does not reproduce the archived BCVAL file')
+    if BC_PROOF:
+        arch = xr.open_dataset(bp)
+        du = np.abs(u * r - arch['hr_u'].values)
+        dv = np.abs(v * r - arch['hr_v'].values)
+        mx = float(np.nanmax([np.nanmax(du), np.nanmax(dv)]))
+        nanm = int((np.isnan(u * r) ^ np.isnan(arch['hr_u'].values)).sum())
+        print(f'  BC PROOF vs {bp.name}: max|diff| u/v {mx:.3e}, NaN mismatch {nanm}')
+        if not (mx < 1e-4 and nanm == 0):
+            sys.exit('STOP: refitted BC map does not reproduce the archived BCVAL file')
+        proof_txt = f'reproduces {bp.name} to max|diff| {mx:.3e}'
+    else:
+        # No archived reference: check the map behaves on the HELD-OUT window.
+        fin = np.isfinite(r)
+        med = float(np.nanmedian(r))
+        # Calm cells (<~0.3 m/s, ~0.1% of values) legitimately map to ~0, so the lower
+        # tail is judged only where the wind is >1 m/s.
+        spd = np.sqrt(u ** 2 + v ** 2)
+        rs = r[(spd > 1.0) & np.isfinite(r)]
+        lo = float(np.nanpercentile(rs, 0.1))
+        f02, f05 = float((rs < 0.2).mean()), float((rs < 0.5).mean())
+        hi = float(np.nanpercentile(r, 99.9))
+        # The v3 archived (proven) BC has 0.1% pct 0.04, 0.34% of values < 0.2 and 1.5% < 0.5
+        # at speeds > 1 m/s (cells whose RTMA minimum is ~0 map 1-2 m/s CNN to ~0).
+        print(f'  BC SELF-CHECK low tail (>1 m/s): 0.1% pct {lo:.3f}, frac<0.2 {100 * f02:.2f}%, '
+              f'frac<0.5 {100 * f05:.2f}%')
+        print(f'  BC SELF-CHECK on {tp.name}: finite {fin.mean():.4f}, ratio median {med:.3f}, '
+              f'0.1-99.9% [{lo:.3f}, {hi:.3f}]')
+        if not (fin.mean() > 0.98 and 0.7 < med < 1.6 and f02 < 0.02 and f05 < 0.05 and hi < 5.0):
+            sys.exit('STOP: BC ratio field looks wrong (non-finite or implausible)')
+        proof_txt = f'self-check on {tp.name}: ratio median {med:.3f}, [{lo:.3f},{hi:.3f}]'
 
     xr.Dataset(
         {'cnn_q': (('level', 'y', 'x'), cnn_q), 'rtma_q': (('level', 'y', 'x'), rtma_q)},
         coords={'level': np.linspace(0.0, 1.0, NQUANT), 'y': it['y'].values,
                 'x': it['x'].values},
-        attrs={'seed': seed, 'fit_period': 'VAL window (inner join with v3data val.nc)',
+        attrs={'seed': seed, 'fit_period': f'VAL window (inner join with {SHARED.parent.name} val.nc)',
                'fit_samples': n_fit, 'nquant': NQUANT,
                'method': 'bias_correct.fit_quantile_maps on |hr_u,hr_v| (P50) vs RTMA speed',
-               'proof': f'reproduces {bp.name} to max|diff| {mx:.3e}'}
+               'proof': proof_txt}
     ).to_netcdf(map_path)
     print(f'  saved BC map {map_path}')
     return cnn_q, rtma_q
@@ -145,6 +183,8 @@ def main():
     ap.add_argument('--seed', required=True)
     ap.add_argument('--in-dir')
     ap.add_argument('--out-dir', default=str(CASE / 'results' / 'v1940_product'))
+    # NB the BC window files live in <case>/results/<seed>/output_inference/, the
+    # year files in --in-dir (default <case>/results/v1940_grids/<seed>).
     a = ap.parse_args()
     in_dir = Path(a.in_dir or CASE / 'results' / 'v1940_grids' / a.seed)
     out = Path(a.out_dir)
@@ -165,12 +205,18 @@ def main():
     prov = {k: v for k, v in first.attrs.items() if isinstance(v, (str, int, float))}
     common = {
         'institution': 'USGS Pacific Coastal and Marine Science Center',
-        'source': ('cosmos-wind-cnn v3 quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
+        'source': (f'cosmos-wind-cnn {VER} quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
                    'downscaling; seed ' + a.seed + ', checkpoint best_speed.pth'),
-        'inputs': ('ERA5 10 m u/v, cloud fraction, wind gust (border-filled as in '
-                   'training), RTMA terrain; staged by scripts/stage_era5_1940.py'),
-        'conventions_note': 'quantile levels are actual grid levels of the 19-level head; '
-                            'there is no true P99 (top level tau=0.9737)',
+        'inputs': (('ERA5 10 m u/v, cloud fraction, wind gust (border-filled as in '
+                    'training), RTMA terrain; staged by scripts/stage_era5_1940.py')
+                   if VER == 'v3' else
+                   ('ERA5 10 m u/v, cloud fraction, wind gust (as delivered, 2026-10 '
+                    'drop, no border fill), RTMA terrain; target RTMA u/v rotated to '
+                    'earth-relative (rotate_rtma_earthrel.py)')),
+        'conventions_note': (f'quantile levels are actual grid levels of the {NQ_HEAD}-level '
+                             f'head; top level tau={(NQ_HEAD - 0.5) / NQ_HEAD:.4f}'
+                             + ('; there is no true P99' if NQ_HEAD < 50 else
+                                '; the top level is the P99')),
         'caveats': ('Pre-1979 ERA5 assimilates far fewer observations; station skill '
                     'rises from ~0.34 (1940s) to ~0.57 (2020s). Hours without a full '
                     'ERA5 input window (annual 7 h gust seam) are NaN.'),
@@ -180,16 +226,16 @@ def main():
     common.update({f'model_{k}': v for k, v in prov.items()})
     first.close()
 
-    names = {k: out / f'CNN_RTMA_v3_{a.seed}_speed_quantiles_{k}_{tag0}_{tag1}.nc'
+    names = {k: out / f'{PREFIX}_{a.seed}_speed_quantiles_{k}_{tag0}_{tag1}.nc'
              for k in ('raw', 'BC')}
     nc_raw = create(str(names['raw']) + '.tmp', xr.open_dataset(files[0]), quantiles,
-                    common, 'SF Bay 10 m wind speed quantiles, CNN-RTMA v3 (raw)',
+                    common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA {VER} (raw)',
                     {'bias_correction': 'none'})
     nc_bc = create(str(names['BC']) + '.tmp', xr.open_dataset(files[0]), quantiles,
-                   common, 'SF Bay 10 m wind speed quantiles, CNN-RTMA v3 (bias-corrected)',
+                   common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA {VER} (bias-corrected)',
                    {'bias_correction': (
                        'per-cell quantile map of P50 speed vs RTMA (200 levels), fitted '
-                       'on the VAL window 2024-03-14..2025-02-06 and applied without '
+                       f'on the VAL window {_win_txt(VAL_WIN)} and applied without '
                        'refit; the ratio BC(P50)/P50 scales every quantile level. Only '
                        'P50 is validated. Map: ' + map_path.name)})
 

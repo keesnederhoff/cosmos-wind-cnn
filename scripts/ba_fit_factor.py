@@ -56,10 +56,21 @@ from scipy import ndimage
 
 HERE = Path(__file__).resolve().parent
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-CASE = ROOT / 'sf_bay_rtma_v3'
+# v3 defaults; the v4 chain sets CNN_CASE (+ CNN_E3_END) and omits --seed: the pick is
+# read from <case>/results/chosen_seed.txt written by select_seed_points.py.
+CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+
+
+def _default_seed():
+    p = CASE / 'results' / 'chosen_seed.txt'
+    if os.environ.get('CNN_CASE') and p.exists():
+        return p.read_text().strip()
+    return 'r1b_do010_s3'
+
+
 POINTS = CASE / 'results' / 'v1940_points'
 LANDSEA = ROOT / 'sf_bay_rtma' / 'raw_data' / 'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
-E3 = ('2020-01-01', '2026-08-10T23:00')
+E3 = ('2020-01-01', os.environ.get('CNN_E3_END', '2026-08-10T23:00'))
 OCEAN_BUOYS = ('46012', '46026')
 MERGE = {'WT_MW201': 'WT_MW101'}          # same mooring, consecutive deployments
 QLEV = [0.5, 0.75, 0.9, 0.95, 0.99]
@@ -297,7 +308,7 @@ def pooled_scores(pairs, T, factor_by_station):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--seed', default='r1b_do010_s3')
+    ap.add_argument('--seed', default=_default_seed())
     ap.add_argument('--level', type=float, default=0.90)
     ap.add_argument('--sigma-km', default='5,4,3.5,3,2.5',
                     help='comma list, largest first; all are diagnosed, the first that passes the '
@@ -328,7 +339,12 @@ def main():
     print('=' * 78 + f'\nSTEP 1  pair Era-3 observations with CNN P50 ({a.seed})\n' + '=' * 78)
     print(f'  VAL_STATION_HEIGHTS={os.environ["VAL_STATION_HEIGHTS"]}; non-10 m stations: '
           + ', '.join(f'{k} {v:g}' for k, v in sorted(heights.items()) if v != 10.0))
-    tab = xr.open_dataset(POINTS / 'station_table.nc')
+    # The station table (stations + stencils on the RTMA grid) is case-independent;
+    # a v4 points dir falls back to the v3 one.
+    _tp = POINTS / 'station_table.nc'
+    if not _tp.exists():
+        _tp = ROOT / 'sf_bay_rtma_v3' / 'results' / 'v1940_points' / 'station_table.nc'
+    tab = xr.open_dataset(_tp)
     ds = load_e3_points(a.seed)
     pairs, groups = pair_stations(ds, tab, vmm, sink, a.min_pairs)
     pairs, groups = auto_merge(pairs, tab, groups, a.merge_km)
