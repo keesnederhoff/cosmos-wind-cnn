@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Follow-up tests on the v4 product. Reads existing outputs; changes no product.
+"""Follow-up tests on the product. Reads existing outputs; changes no product.
 
 A. Tapered BA: speed' = s * (1 + (f - 1) * w(s)), w ramps 0 -> 1 between s0 and s1, with f the
    LEAVE-ONE-STATION-OUT field factor (pred_gauss_loo). s0 = s1 = 0 is the current flat BA.
 B. Quantile spread: fit one inflation c_tau per level on WY2025 stations,
    q' = P50 + c_tau (q - P50), evaluate coverage and pinball loss on other windows.
-C. Baselines: same reliability for the v3 station points, and v4 reliability against RTMA itself
+C. Baselines: same reliability for the v3 station points, and reliability against RTMA itself
    over the grid (WY2026), which removes the point-versus-cell mismatch of station obs.
 Output: <results>/v1940_product/FOLLOWUP_EVAL.txt
 """
@@ -22,9 +22,9 @@ import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-RES = ROOT / 'sf_bay_rtma_v4' / 'results'
-V3RES = ROOT / 'sf_bay_rtma_v3' / 'results'
-TABLE = V3RES / 'v1940_points' / 'station_table.nc'
+RES = ROOT / 'sf_bay_rtma' / 'results'
+V3RES = ROOT / 'archive' / 'sf_bay_rtma_v3' / 'results'
+TABLE = RES / 'v1940_points' / 'station_table.nc'
 V3SEED = 'r1b_do010_s3'
 WINDOWS = {
     'WY2025 (fit)': ('2024-10-01', '2025-09-30T23'),
@@ -173,10 +173,10 @@ def v3_baseline(vmm, groups):
 
 
 def rtma_baseline():
-    say('\n=== C2. v4 RELIABILITY AGAINST RTMA OVER THE GRID, WY2026 (every 7th hour) ===')
+    say('\n=== C2. RELIABILITY AGAINST RTMA OVER THE GRID, WY2026 (every 7th hour) ===')
     seed = (RES / 'chosen_seed.txt').read_text().strip()
     inf = xr.open_dataset(RES / seed / 'output_inference' / 'speed_full_record_ERA5_20251001_20261002.nc')
-    tru = xr.open_dataset(RES / 'v4data' / 'data_processed' / 'test.nc')
+    tru = xr.open_dataset(RES / 'data' / 'data_processed' / 'test.nc')
     t = np.intersect1d(inf.time.values, tru.time.values)[::7]
     q = inf['hr_speed_q'].sel(time=t)
     qd = [d for d in q.dims if d not in ('time', 'y', 'x')][0]
@@ -206,7 +206,7 @@ def main():
     groups = dict(zip(tab.station.values, tab.group.values))
     seed = (RES / 'chosen_seed.txt').read_text().strip()
     D, taus, cols = pairs(vmm, sorted(glob.glob(str(RES / 'v1940_points' / seed / 'points_speed_full_record_ERA5_*.nc'))), groups)
-    say('v4 pairs', len(D), 'stations', D.station.nunique(), 'levels', np.round(taus, 4).tolist())
+    say('pairs', len(D), 'stations', D.station.nunique(), 'levels', np.round(taus, 4).tolist())
     taper_test(D, cols, taus)
     spread_test(D, cols, taus)
     v3_baseline(vmm, groups)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Rotate RTMA grid-relative 10 m u/v (v4 drop) to earth-relative (true east/north).
 
-WHY. The 2026-10-27 audit of sf_bay_rtma_v4/raw_data found the RTMA u/v vectors rotated
+WHY. The 2026-10-27 audit of sf_bay_rtma/raw_data found the RTMA u/v vectors rotated
 ~11.9 deg (10.6-12.9, smooth W->E) from the v3 files, which reproduce RTMA's native
 wind_direction exactly. The v4 export kept the NCEP Lambert-grid-relative components.
 Rotation by the local grid convergence angle restores true east/north.
@@ -34,8 +34,8 @@ import numpy as np
 from pyproj import Transformer
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-V4 = ROOT / 'sf_bay_rtma_v4' / 'raw_data'
-V3 = ROOT / 'sf_bay_rtma' / 'raw_data'
+RAW = ROOT / 'sf_bay_rtma' / 'raw_data'
+V3 = ROOT / 'archive' / 'sf_bay_rtma_v2' / 'raw_data'
 STEM = 'RTMA_SFbay_2p5km_{}_2011_2026_UTM10'
 CHUNK = 1680                                  # 10 x the on-disk time chunk (168)
 
@@ -139,9 +139,9 @@ def main():
                     help='re-prove the EXISTING *_earthrel.nc files against v3 (chain resume)')
     a = ap.parse_args()
 
-    pu, pv = V4 / (STEM.format('eastward_wind') + '.nc'), V4 / (STEM.format('northward_wind') + '.nc')
-    ou, ov = (V4 / (STEM.format('eastward_wind') + '_earthrel.nc'),
-              V4 / (STEM.format('northward_wind') + '_earthrel.nc'))
+    pu, pv = RAW / (STEM.format('eastward_wind') + '.nc'), RAW / (STEM.format('northward_wind') + '.nc')
+    ou, ov = (RAW / (STEM.format('eastward_wind') + '_earthrel.nc'),
+              RAW / (STEM.format('northward_wind') + '_earthrel.nc'))
     for o in (ou, ov):
         if o.exists() and not a.overwrite and not a.gate_only and not a.verify_only:
             sys.exit(f'REFUSING to overwrite {o} (use --overwrite)')

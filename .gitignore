@@ -71,3 +71,7 @@ validation/results/
 validation/**/*.nc
 validation/**/*.png
 validation/**/*.pptx
+
+# run logs and job ids of the current chain
+logs/
+chain_jobids.txt

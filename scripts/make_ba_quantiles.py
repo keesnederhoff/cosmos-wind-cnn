@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Apply the observation-based BA factor to the shipped speed-QUANTILE subset (v4).
+"""Apply the observation-based BA factor to the shipped speed-QUANTILE subset.
 
 v3 shipped BA only for the P50 u/v/speed products; the quantile files were not
 adjusted. The BA factor is one multiplicative number per cell, fitted at the 90th
@@ -8,9 +8,9 @@ shipped level. Order and relative spread are preserved; the factor is >= 1
 (never reduces wind speed, user rule 2026-10-03), so the adjusted quantiles are
 never below the raw ones.
 
-Input : CNN_RTMA_v4_<seed>_speed_quantiles_raw_<t0>_<t1>.nc (from combine_full_record.py)
+Input : CNN_RTMA_<seed>_speed_quantiles_raw_<t0>_<t1>.nc (from combine_full_record.py)
 Map   : BA_factor_map_<seed>_E3q90.nc (from ba_fit_factor.py)
-Output: CNN_RTMA_v4_<seed>_speed_quantiles_BA_<t0>_<t1>.nc  (.tmp -> verify -> rename)
+Output: CNN_RTMA_<seed>_speed_quantiles_BA_<t0>_<t1>.nc  (.tmp -> verify -> rename)
 
 Which levels carry the factor is a judgement: only P50 is validated against
 observations (BA exact at q90 at the stations). The attributes say so.
@@ -28,8 +28,8 @@ import numpy as np
 import xarray as xr
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma_v4')
-PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA_v4')
+CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma')
+PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA')
 BLOCK = 24 * 31
 
 

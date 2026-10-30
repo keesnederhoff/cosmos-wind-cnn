@@ -37,21 +37,20 @@ sys.path.insert(0, str(HERE))
 from bias_correct import fit_quantile_maps, apply_maps  # noqa: E402
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-# Everything below defaults to the v3 product; the v4 chain overrides via env so the
-# v3 numbers stay reproducible from this very script.
-CASE_NAME = os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+# Everything below can be overridden via env; set it to reproduce the v3 numbers.
+CASE_NAME = os.environ.get('CNN_CASE', 'sf_bay_rtma')
 CASE = ROOT / CASE_NAME
-SHARED = CASE / 'results' / os.environ.get('CNN_STORE', 'v3data') / 'data_processed'
-VAL_WIN = os.environ.get('CNN_VAL_WIN', '20240314_20250206')     # BC fit window
-TEST_WIN = os.environ.get('CNN_TEST_WIN', '20250206_20260101')   # held-out window
+SHARED = CASE / 'results' / os.environ.get('CNN_STORE', 'data') / 'data_processed'
+VAL_WIN = os.environ.get('CNN_VAL_WIN', '20241001_20251001')     # BC fit window
+TEST_WIN = os.environ.get('CNN_TEST_WIN', '20251001_20261002')   # held-out window
 VAL_FILE = f'speed_full_record_ERA5_{VAL_WIN}.nc'
 TEST_FILE = f'speed_full_record_ERA5_{TEST_WIN}.nc'
-PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA_v3')
-VER = PREFIX.split('_')[-1]                                      # 'v3' / 'v4'
-NQ_HEAD = int(os.environ.get('CNN_NQ', '19'))
-# v3 had an archived BCVAL_ file to reproduce; v4 has none. CNN_BC_PROOF=0 swaps the
+PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA')
+VER = 'v3' if PREFIX.endswith('_v3') else 'current'
+NQ_HEAD = int(os.environ.get('CNN_NQ', '51'))
+# v3 had an archived BCVAL_ file to reproduce (CNN_BC_PROOF=1). CNN_BC_PROOF=0 swaps the
 # reproduction proof for a self-consistency check (finite, sane ratios) on TEST.
-BC_PROOF = os.environ.get('CNN_BC_PROOF', '1') != '0'
+BC_PROOF = os.environ.get('CNN_BC_PROOF', '0') != '0'
 
 
 def _win_txt(w):
@@ -205,7 +204,7 @@ def main():
     prov = {k: v for k, v in first.attrs.items() if isinstance(v, (str, int, float))}
     common = {
         'institution': 'USGS Pacific Coastal and Marine Science Center',
-        'source': (f'cosmos-wind-cnn {VER} quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
+        'source': (f'cosmos-wind-cnn quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
                    'downscaling; seed ' + a.seed + ', checkpoint best_speed.pth'),
         'inputs': (('ERA5 10 m u/v, cloud fraction, wind gust (border-filled as in '
                     'training), RTMA terrain; staged by scripts/stage_era5_1940.py')
@@ -229,10 +228,10 @@ def main():
     names = {k: out / f'{PREFIX}_{a.seed}_speed_quantiles_{k}_{tag0}_{tag1}.nc'
              for k in ('raw', 'BC')}
     nc_raw = create(str(names['raw']) + '.tmp', xr.open_dataset(files[0]), quantiles,
-                    common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA {VER} (raw)',
+                    common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA (raw)',
                     {'bias_correction': 'none'})
     nc_bc = create(str(names['BC']) + '.tmp', xr.open_dataset(files[0]), quantiles,
-                   common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA {VER} (bias-corrected)',
+                   common, f'SF Bay 10 m wind speed quantiles, CNN-RTMA (bias-corrected)',
                    {'bias_correction': (
                        'per-cell quantile map of P50 speed vs RTMA (200 levels), fitted '
                        f'on the VAL window {_win_txt(VAL_WIN)} and applied without '

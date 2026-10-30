@@ -35,7 +35,7 @@ import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_TABLE = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/'
-                     'sf_bay_rtma_v3/results/v1940_points/station_table.nc')
+                     'sf_bay_rtma/results/v1940_points/station_table.nc')
 
 
 def make_table(grid_file, table_path):

@@ -33,13 +33,12 @@ import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-# Case study / seeds are env-overridable so the v4 rebuild reuses this script; the
-# defaults reproduce the v3 selection exactly. The station table (stations +
-# bilinear stencils on the RTMA grid) is case-independent and is read from v3.
-CASE = os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+# Case study / seeds are env-overridable. The station table (stations + bilinear
+# stencils on the RTMA grid) is case-independent.
+CASE = os.environ.get('CNN_CASE', 'sf_bay_rtma')
 P = ROOT / CASE / 'results' / 'v1940_points'
-TABLE = ROOT / 'sf_bay_rtma_v3' / 'results' / 'v1940_points' / 'station_table.nc'
-SEEDS = os.environ.get('CNN_SEEDS', 'r1_do010,r1b_do010_s2,r1b_do010_s3').split(',')
+TABLE = ROOT / 'sf_bay_rtma' / 'results' / 'v1940_points' / 'station_table.nc'
+SEEDS = os.environ.get('CNN_SEEDS', 's1,s2,s3').split(',')
 REFERENCE = os.environ.get('CNN_SEED_REF', SEEDS[0])
 ERAS = [('E-2', 1940, 1959), ('E-1', 1960, 1979), ('E0', 1980, 1999),
         ('E1', 2000, 2010), ('E2', 2011, 2019), ('E3', 2020, 2026)]
@@ -158,7 +157,7 @@ def main():
                else f'TIE -> keep reference {REFERENCE} (top on raw score: {top})')
     print(f'\nVERDICT: {verdict}')
     (out / 'VERDICT.txt').write_text(verdict + '\n')
-    # Machine-readable pick for the unattended v4 chain: downstream stages read
+    # Machine-readable pick for the unattended chain: downstream stages read
     # <case>/results/chosen_seed.txt at RUN time (sbatch args are fixed at submit).
     (out / 'chosen_seed.txt').write_text(pick + '\n')
     (P.parent / 'chosen_seed.txt').write_text(pick + '\n')

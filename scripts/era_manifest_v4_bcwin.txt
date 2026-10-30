@@ -1,3 +1,0 @@
-# v4 BC windows for the chosen seed: VAL (WY2025, BC map fit) and TEST (WY2026, self-check). Columns: RN START END.
-CHOSEN   2024-10-01 2025-10-01
-CHOSEN   2025-10-01 2026-10-02

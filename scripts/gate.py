@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""File-based gates between the stages of the unattended v4 chain.
+"""File-based gates between the stages of the unattended chain.
 
-Usage: python scripts/v4_gate.py {prep|train|points|grids|dirtrack|products}
+Usage: python scripts/gate.py {prep|train|points|grids|dirtrack|products}
 Exit 0 = PASS, 1 = FAIL (the next stage is `afterok` on this job, so a FAIL stops the
 chain; `--kill-on-invalid-dep=yes` then cancels everything downstream).
 
@@ -20,8 +20,8 @@ import numpy as np
 import xarray as xr
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-RES = ROOT / 'sf_bay_rtma_v4' / 'results'
-SEEDS = ['v4_s1', 'v4_s2', 'v4_s3']
+RES = ROOT / 'sf_bay_rtma' / 'results'
+SEEDS = ['s1', 's2', 's3']
 FAILS: list[str] = []
 
 
@@ -47,7 +47,7 @@ def tfirst_last(path):
 
 # --------------------------------------------------------------------------- prep
 def gate_prep():
-    dp = RES / 'v4data' / 'data_processed'
+    dp = RES / 'data' / 'data_processed'
     exp = {  # split -> (first >=, first <=, last >=, last <=)  (gap_hours=48 drops the tail of train/val)
         'train': ('2019-01-01', '2019-01-02T12', '2024-09-28T12', '2024-09-30T00'),
         'val':   ('2024-10-01T00', '2024-10-01T12', '2025-09-28T12', '2025-09-30T00'),
@@ -177,11 +177,11 @@ def gate_products():
         check(len(h) == 1, f'{pat}: {len(h)} file(s)')
         return h[0] if h else None
 
-    raw = one(f'CNN_RTMA_v4_{seed}_P50_uvs_raw_*.nc')
-    ba = one(f'CNN_RTMA_v4_{seed}_P50_uvs_BA_*.nc')
-    qraw = one(f'CNN_RTMA_v4_{seed}_speed_quantiles_raw_*.nc')
-    qbc = one(f'CNN_RTMA_v4_{seed}_speed_quantiles_BC_*.nc')
-    qba = one(f'CNN_RTMA_v4_{seed}_speed_quantiles_BA_*.nc')
+    raw = one(f'CNN_RTMA_{seed}_P50_uvs_raw_*.nc')
+    ba = one(f'CNN_RTMA_{seed}_P50_uvs_BA_*.nc')
+    qraw = one(f'CNN_RTMA_{seed}_speed_quantiles_raw_*.nc')
+    qbc = one(f'CNN_RTMA_{seed}_speed_quantiles_BC_*.nc')
+    qba = one(f'CNN_RTMA_{seed}_speed_quantiles_BA_*.nc')
     if FAILS:
         return
     for p in (raw, ba):
@@ -215,7 +215,7 @@ if __name__ == '__main__':
           'dirtrack': gate_dirtrack, 'products': gate_products}.get(gate)
     if fn is None:
         sys.exit(__doc__)
-    print(f'=== v4 gate: {gate} ===', flush=True)
+    print(f'=== gate: {gate} ===', flush=True)
     fn()
     print(f'=== gate {gate}: {"FAIL (" + str(len(FAILS)) + ")" if FAILS else "PASS"} ===', flush=True)
     sys.exit(1 if FAILS else 0)

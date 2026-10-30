@@ -1,93 +1,76 @@
-# SF Bay RTMA Case Study - Preprocessing Configuration
+# SF Bay RTMA — Preprocessing Configuration
 #
-# Target: RTMA 2.5 km (observation-constrained analysis), 2011-2026
-# Input:  ERA5 ~31 km, interpolated onto the RTMA grid
+# Target: RTMA 2.5 km EARTH-RELATIVE winds, 2019-01-01 -> 2026-10-01
+# Input:  ERA5 ~31 km (2026-10 drop), interpolated onto the RTMA grid
+#
+# Same recipe as v3 (P0: u, v, gust, cloud, terrain). Differences, all deliberate:
+#   * RTMA u/v are the *_earthrel.nc files written by scripts/rotate_rtma_earthrel.py.
+#     The raw export carries grid-relative Lambert components (~11.9 deg rotated
+#     vs the v3 files); the rotation was proven against v3 on the overlap.
+#   * ERA5 files are single full-length files (1940 -> 2026-10-01): no _dedup,
+#     no _filled variants. The drop has clean time axes and NO border NaN, so
+#     the border is REAL data in training and in inference alike.
+#   * Only the 8 recipe channels are processed (v3 processed all 30 for the P0-P5
+#     ablation, which concluded that the 5-channel baseline ties every richer set).
+#   * Water-year split (see split_dates) instead of 70/15/15 by index.
+#
+# Start date 2019-01-01. The v3 window started 2020 (RTMA obs-validated skill 0.403
+# for 2011-2019 vs 0.578 for 2020-2025), but that was an era split, not a located
+# changepoint. The per-year check of 2026-10-27 (station-mean speed skill, IEM+NDBC,
+# obsEY_<year>) puts the RTMA step at 2019-01-01: 0.31-0.33 in 2016-2018 ->
+# 0.52 in 2019 -> 0.43-0.53 since, bias -0.63 -> -0.44 -> about -0.2 m/s, while ERA5
+# shows no step (0.19-0.32 every year). 2019 is therefore good target data.
 
-# Reindex onto a complete hourly axis (NaN-fill ~1% missing RTMA hours) before splitting.
-# The dataset's NaN-window dropping then excludes any sequence window spanning a gap.
 regular_time_grid: true
 
-# File mappings: variable_key -> filename in data/raw/
 file_dict:
+  # ── TARGETS (hr_) ───────────────────────────────────────────────────────────
+  hr_u:    'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10_earthrel.nc'
+  hr_v:    'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10_earthrel.nc'
+  hr_gust: 'RTMA_SFbay_2p5km_wind_gust_2016_2026_UTM10.nc'
 
-  # Wind U / V
-  hr_u: 'RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc'
-  lr_u: 'ERA5_eastward_wind_1940_2026_UTM.nc'
-  hr_v: 'RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc'
-  lr_v: 'ERA5_northward_wind_1940_2026_UTM.nc'
-
-  # Air temperature
-  hr_air_temp: 'RTMA_SFbay_2p5km_air_temperature_2011_2026_UTM10.nc'
-  lr_air_temp: 'ERA5_air_temperature_1940_2026_UTM.nc'
-
-  # Dew point temperature
-  hr_dew_temp: 'RTMA_SFbay_2p5km_dew_point_temperature_2011_2026_UTM10.nc'
-  lr_dew_temp: 'ERA5_dew_point_temperature_1940_2026_UTM.nc'
-
-  # Air pressure (RTMA = MSL pressure; ERA5 = msl-derived — consistent)
-  hr_pressure: 'RTMA_SFbay_2p5km_air_pressure_fixed_height_2011_2026_UTM10.nc'
-  lr_pressure: 'ERA5_air_pressure_fixed_height_1940_2026_UTM.nc'
-
-  # Precipitation (mm/hr)
-  hr_rain: 'RTMA_SFbay_2p5km_precipitation_2011_2026_UTM10.nc'
-  lr_rain: 'ERA5_precipitation_1940_2026_UTM.nc'
-
-  # ── Extra input-only fields (no HR target — fed in, not predicted) ───────────
-  # ERA5 cloud cover (0-1 fraction), regridded onto the RTMA grid like other lr_.
+  # ── P0 inputs ───────────────────────────────────────────────────────────────
+  # lr_gust is the low-res partner of the hr_gust pair, so parse_variable_config
+  # forces it into input_vars (deliberate, as in v3).
+  lr_u:     'ERA5_eastward_wind_1940_2026_UTM.nc'
+  lr_v:     'ERA5_northward_wind_1940_2026_UTM.nc'
   lr_cloud: 'ERA5_cloud_area_fraction_1940_2026_UTM.nc'
-  # RTMA static surface height (terrain) — no time dim; broadcast over time.
+  lr_gust:  'ERA5_wind_gust_1940_2026_UTM.nc'
+
+  # ── High-res static (byte-identical to the v3 file; no time dim) ────────────
   static_terrain: 'RTMA_SFbay_2p5km_surface_height_static_UTM10.nc'
 
-  # Derived high-res static predictors (scripts/make_derived_terrain.py).
-  # Materialized into train.nc so they are AVAILABLE, but only become model
-  # channels when listed in training.yaml's `additional_inputs` — the two configs
-  # are decoupled, so leaving them out of additional_inputs keeps the baseline.
-  # Statics have no time dim, so they are excluded from the common-time
-  # intersection and CANNOT shift the train/val/test split.
-  static_dhdx:      'RTMA_SFbay_2p5km_static_dhdx_static_UTM10.nc'
-  static_dhdy:      'RTMA_SFbay_2p5km_static_dhdy_static_UTM10.nc'
-  static_landsea:   'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
-  static_tpi:       'RTMA_SFbay_2p5km_static_tpi_static_UTM10.nc'
-  static_distcoast: 'RTMA_SFbay_2p5km_static_distcoast_static_UTM10.nc'
+start_date: '2019-01-01'
+end_date: '2026-10-02'
 
-# Time period — full ERA5 ∩ RTMA overlap
-start_date: '2011-01-01'
-end_date: '2026-06-18'
+# WATER-YEAR SPLIT. Train 2019-01-01 -> 2024-09-28, val = WY2025, test = WY2026
+# (ends where the data end, 2026-10-01 13:00). Each of val and test holds one
+# complete winter-storm season and one complete summer sea-breeze season.
+# The ratios below are IGNORED when split_dates is present; kept only so the
+# file diffs cleanly against v3.
+split_dates:
+  train_end: '2024-10-01'
+  val_end: '2025-10-01'
+# Drop the last 48 h of train and of val (val/test keep their exact start dates)
+# to decorrelate neighbouring splits. 0 = v3 behaviour.
+gap_hours: 48
 
-# Data split ratios
 train_ratio: 0.7
 val_ratio: 0.15
 test_ratio: 0.15
 compression_level: 1
 
-# ── Physical value bounds (values outside [min, max] -> NaN) ──────────────────
+# ── Physical bounds (values outside [min, max] -> NaN) ────────────────────────
+# Permissive on purpose: out-of-bounds becomes NaN and a NaN anywhere in a window
+# drops that window.
 physical_bounds:
-  hr_u:        {min: -100,  max: 100}
-  lr_u:        {min: -100,  max: 100}
-  hr_v:        {min: -100,  max: 100}
-  lr_v:        {min: -100,  max: 100}
+  hr_u:    {min: -100, max: 100}
+  hr_v:    {min: -100, max: 100}
+  hr_gust: {min: 0,    max: 150}
 
-  hr_air_temp: {min: 220, max: 330}
-  lr_air_temp: {min: 220, max: 330}
+  lr_u:     {min: -100, max: 100}
+  lr_v:     {min: -100, max: 100}
+  lr_gust:  {min: 0,    max: 150}
+  lr_cloud: {min: -0.1, max: 1.1}
 
-  hr_dew_temp: {min: 200, max: 315}
-  lr_dew_temp: {min: 200, max: 315}
-
-  hr_pressure: {min: 85000, max: 110000}
-  lr_pressure: {min: 85000, max: 110000}
-
-  hr_rain:     {min: 0, max: 200}
-  lr_rain:     {min: 0, max: 200}
-
-  lr_cloud:       {min: -0.1, max: 1.1}     # ERA5 cloud area fraction (0-1)
-  static_terrain: {min: -500, max: 5000}    # surface height (m)
-
-  # Derived statics. Bounds are deliberately permissive: out-of-bounds values are
-  # turned into NaN, and a single NaN in a time-constant channel makes every
-  # timestep invalid -> a silent zero-sample training set. Gradients MUST allow
-  # negatives. Keep these identical to inference_preprocessing.yaml.
-  static_dhdx:      {min: -10,   max: 10}      # d elev / dx (m/m)
-  static_dhdy:      {min: -10,   max: 10}      # d elev / dy (m/m)
-  static_landsea:   {min: -0.1,  max: 1.1}     # 1 = land, 0 = water
-  static_tpi:       {min: -2000, max: 2000}    # elevation - smoothed elevation (m)
-  static_distcoast: {min: -1,    max: 1000}    # distance to water (km)
+  static_terrain: {min: -500, max: 5000}

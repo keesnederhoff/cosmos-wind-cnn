@@ -1,0 +1,122 @@
+# SF Bay RTMA Case Study - Training Configuration
+
+# Provenance labels for output metadata + plots (model-agnostic keys below)
+hr_source: RTMA
+lr_source: ERA5
+
+# Variable Pairs (high-resolution target : low-resolution input)
+variable_pairs:
+  wind_u:
+    high_res: 'hr_u'
+    low_res: 'lr_u'
+  wind_v:
+    high_res: 'hr_v'
+    low_res: 'lr_v'
+  air_temperature:
+    high_res: 'hr_air_temp'
+    low_res: 'lr_air_temp'
+  dew_point_temperature:
+    high_res: 'hr_dew_temp'
+    low_res: 'lr_dew_temp'
+  pressure:
+    high_res: 'hr_pressure'
+    low_res: 'lr_pressure'
+  rainfall:
+    high_res: 'hr_rain'
+    low_res: 'lr_rain'
+
+# Extra input-only channels (fed to the model, not predicted). No HR target, so
+# they don't add outputs and don't shrink the training period (both span the
+# full record): ERA5 cloud cover + RTMA static surface height (terrain).
+# NOTE: the derived static terrain channels (static_dhdx, static_dhdy,
+# static_landsea, static_tpi, static_distcoast) are materialized into train.nc by
+# preprocessing.yaml but are deliberately NOT listed here, so the default remains
+# the 8-channel baseline. Select them per-run with
+# SWEEP_ADD_INPUTS="lr_cloud,static_terrain,static_dhdx,..." (which must also be
+# set for inference).
+additional_inputs:
+  - 'lr_cloud'
+  - 'static_terrain'
+
+# Model Architecture (same as sf_bay_conus404)
+base_channels: 16
+sequence_length: 6
+forecast_horizon: 0
+dropout_rate: 0.1
+
+# Residual learning: when true, the network predicts only the fine-scale
+# CORRECTION and the already-interpolated low-res field is added back on
+# (hr = interp(lr) + net(x)), rescaled per channel from lr- to hr-normalized
+# space. The interpolated lr_* fields are already model input channels on the
+# target grid, so no upsampling happens in the model.
+# Requires forecast_horizon: 0 (the skip uses the last input timestep as the
+# target timestep). Default false == the original behaviour.
+# Override per-run with SWEEP_RESIDUAL=1 (must also be set for inference, since
+# step_inference reads the ARCHIVED copy of this file).
+residual_learning: false
+
+# Training Parameters
+batch_size: 32
+num_epochs: 200
+learning_rate: 0.0003
+weight_decay: 0.001
+num_workers: 8
+
+# Data Loading
+load_in_memory: false
+use_memmap: true
+train_stride: 1
+val_stride: 6
+
+# Loss Function Weights (within the wind term: u/v MSE, speed MAE, direction cosine)
+loss_alpha: 1.0
+loss_beta: 0.5
+loss_gamma: 0.3
+
+# OPTIMIZATION GOAL — relative weight of the non-wind MSE (temp/dew/pressure/rain).
+#   1.0 = "all variables"  : loss = (wind + nonwind)/2  <- original behaviour.
+#         NB this gives the single wind pair 50% of the loss and the 4 non-wind
+#         channels the other 50%.
+#   0.0 = "wind only"      : non-wind error is still REPORTED but gets no
+#         gradient, so training, early stopping AND best_model selection all
+#         track wind (u, v, speed, direction) alone.
+#         CAVEAT: at 0.0 the non-wind outputs are never trained and their
+#         predictions are unusable. Use ~0.05 to keep them sane while wind
+#         dominates.
+# This matters because val_loss was measured ANTI-correlated with wind skill
+# across model sizes under the 1.0 aggregate — a model can win the average on
+# temperature/pressure while losing on wind.
+# Override per-run with SWEEP_NONWIND_WEIGHT=0 (training only; the eval scores
+# wind skill regardless of this setting).
+loss_nonwind_weight: 1.0
+
+# GOAL 3 -- wind_magnitude_extremes: an extra speed penalty over winds
+# above loss_extreme_threshold m/s (a 4th WindLoss term). 0.0 = OFF
+# (default, loss bit-identical). Override per run with SWEEP_EXTREME_WEIGHT
+# / SWEEP_EXTREME_THRESH. The matching eval always reports
+# wind_speed_extreme_10ms skill regardless of this setting.
+loss_delta: 0.0
+loss_extreme_threshold: 10.0
+
+# Smooth wave-energy weighting: weight each pixel's speed error by
+# (true_speed / loss_wave_scale) ** loss_wave_exp so wave-making winds
+# (stress ~ U^2, energy ~ U^3) are emphasised without a hard cliff.
+# 0.0 = OFF (default, loss bit-identical). Override per run with
+# SWEEP_WAVE_WEIGHT / SWEEP_WAVE_EXP / SWEEP_WAVE_SCALE. Smooth
+# alternative to loss_delta.
+loss_wave_weight: 0.0
+loss_wave_exp: 2.0
+loss_wave_scale: 10.0
+
+# Learning Rate Scheduler
+scheduler_patience: 5
+scheduler_factor: 0.5
+
+# Early Stopping
+early_stopping_patience: 20
+
+# Save checkpoint every N epochs
+save_every: 10
+
+# Coordinate Reference System for output NetCDFs
+crs: 'EPSG:32610'  # UTM Zone 10N

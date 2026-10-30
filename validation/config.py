@@ -418,7 +418,7 @@ _AV_FILE = MODELS['CNN-allvars']['u_file']
 #   Wind-only single-file, so no temp_file key -- same shape as CNN-wave-p2/p3.
 # ===========================================================================
 _V3_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
-                   '/sf_bay_rtma_v3/results')
+                   '/archive/sf_bay_rtma_v3/results')
 _V3_FILE = 'full_record_ERA5_20250206_20260101.nc'
 
 # (label, run_dir, filename). The filename became per-arm on day 3: the wrap-up
@@ -507,43 +507,43 @@ for _sd, _run in [('s3', 'r1b_do010_s3')]:
 # ---- P50 products, raw and observation-based bias adjustment (2026-10-02) --
 # scripts/make_p50_products.py writes ONE file per product with u10 / v10 /
 # wind_speed (CNN P50 x direction) for 1940-01-01 -> 2026-08-10.
-#   CNN-RTMA    = the raw P50; reproduces V3-1940-s3 to rounding.
-#   CNN-RTMA-BA = x BA_factor_map (scripts/ba_fit_factor.py): obs/CNN at the
+#   V3-RTMA    = the raw P50; reproduces V3-1940-s3 to rounding.
+#   V3-RTMA-BA = x BA_factor_map (scripts/ba_fit_factor.py): obs/CNN at the
 #                 90th percentile per station over Era 3, exact at every
 #                 station, land / bay / ocean constants elsewhere. Era 3 scores
 #                 of this product are IN-SAMPLE at the stations by construction;
 #                 E2 (2011-2019, RTMA present) is the honest comparison.
 _P50_DIR = _V3_RESULTS / 'v1940_product'
 P50_MODELS = []
-for _lab, _kind in (('CNN-RTMA', 'raw'), ('CNN-RTMA-BA', 'BA')):
+for _lab, _kind in (('V3-RTMA', 'raw'), ('V3-RTMA-BA', 'BA')):
     _f = _P50_DIR / f'CNN_RTMA_v3_r1b_do010_s3_P50_uvs_{_kind}_19400101_20260810.nc'
     MODELS[_lab] = {'u_file': _f, 'v_file': _f, 'u_var': 'u10', 'v_var': 'v10',
                     'single_file': True}
     P50_MODELS.append(_lab)
-MODEL_COLORS['CNN-RTMA']    = '#d62728'
-MODEL_COLORS['CNN-RTMA-BA'] = 'darkviolet'
+MODEL_COLORS['V3-RTMA']    = '#d62728'
+MODEL_COLORS['V3-RTMA-BA'] = 'darkviolet'
 
-# ---- v4 rebuild (2026-10): P50 raw + BA products of the chosen v4 seed -------
-# scripts/make_p50_products.py with CNN_CASE=sf_bay_rtma_v4 writes
-# CNN_RTMA_v4_<seed>_P50_uvs_{raw,BA}_19400101_<end>.nc into v1940_product/. The
+# ---- rebuild (2026-10): P50 raw + BA products of the chosen seed -------
+# scripts/make_p50_products.py with CNN_CASE=sf_bay_rtma writes
+# CNN_RTMA_<seed>_P50_uvs_{raw,BA}_19400101_<end>.nc into v1940_product/. The
 # seed is whatever select_seed_points.py wrote to results/chosen_seed.txt; the end
 # tag is found by glob so a record-end change cannot silently orphan the entry.
-# ERA_SET=v4 puts these beside the v3 products (CNN-RTMA / CNN-RTMA-BA above) so
-# every era table shows v4 against v3 directly.
-_V4_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
-                   '/sf_bay_rtma_v4/results')
-_V4_PROD = _V4_RESULTS / 'v1940_product'
-_v4_seed_f = _V4_RESULTS / 'chosen_seed.txt'
-V4_SEED = _v4_seed_f.read_text().strip() if _v4_seed_f.exists() else 'v4_s1'
-V4_P50_MODELS = []
-for _lab, _kind in (('V4-RTMA', 'raw'), ('V4-RTMA-BA', 'BA')):
-    _hits = sorted(_V4_PROD.glob(f'CNN_RTMA_v4_{V4_SEED}_P50_uvs_{_kind}_19400101_*.nc'))
-    _f = _hits[-1] if _hits else _V4_PROD / f'CNN_RTMA_v4_{V4_SEED}_P50_uvs_{_kind}_19400101_NOTYET.nc'
+# ERA_SET=current puts these beside the v3 products (V3-RTMA / V3-RTMA-BA above) so
+# every era table shows against v3 directly.
+_RESULTS = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay'
+                   '/sf_bay_rtma/results')
+_PROD = _RESULTS / 'v1940_product'
+_seed_f = _RESULTS / 'chosen_seed.txt'
+CHOSEN_SEED = _seed_f.read_text().strip() if _seed_f.exists() else 's1'
+CURRENT_P50_MODELS = []
+for _lab, _kind in (('CNN-RTMA', 'raw'), ('CNN-RTMA-BA', 'BA')):
+    _hits = sorted(_PROD.glob(f'CNN_RTMA_{CHOSEN_SEED}_P50_uvs_{_kind}_19400101_*.nc'))
+    _f = _hits[-1] if _hits else _PROD / f'CNN_RTMA_{CHOSEN_SEED}_P50_uvs_{_kind}_19400101_NOTYET.nc'
     MODELS[_lab] = {'u_file': _f, 'v_file': _f, 'u_var': 'u10', 'v_var': 'v10',
                     'single_file': True}
-    V4_P50_MODELS.append(_lab)
-MODEL_COLORS['V4-RTMA']    = '#1f77b4'
-MODEL_COLORS['V4-RTMA-BA'] = '#2ca02c'
+    CURRENT_P50_MODELS.append(_lab)
+MODEL_COLORS['CNN-RTMA']    = '#1f77b4'
+MODEL_COLORS['CNN-RTMA-BA'] = '#2ca02c'
 
 # ---- CNN-quantile-v3: single-arm full-record inference (2026-08-27 request).
 # Same multifile layout/caveat as V3_ERA_MODELS above (one arm, not three

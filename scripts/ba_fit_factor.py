@@ -56,21 +56,21 @@ from scipy import ndimage
 
 HERE = Path(__file__).resolve().parent
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-# v3 defaults; the v4 chain sets CNN_CASE (+ CNN_E3_END) and omits --seed: the pick is
+# The chain sets CNN_CASE (+ CNN_E3_END) and omits --seed: the pick is
 # read from <case>/results/chosen_seed.txt written by select_seed_points.py.
-CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
+CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma')
 
 
 def _default_seed():
     p = CASE / 'results' / 'chosen_seed.txt'
     if os.environ.get('CNN_CASE') and p.exists():
         return p.read_text().strip()
-    return 'r1b_do010_s3'
+    return 's3'
 
 
 POINTS = CASE / 'results' / 'v1940_points'
 LANDSEA = ROOT / 'sf_bay_rtma' / 'raw_data' / 'RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc'
-E3 = ('2020-01-01', os.environ.get('CNN_E3_END', '2026-08-10T23:00'))
+E3 = ('2020-01-01', os.environ.get('CNN_E3_END', '2026-10-01T23:00'))
 OCEAN_BUOYS = ('46012', '46026')
 MERGE = {'WT_MW201': 'WT_MW101'}          # same mooring, consecutive deployments
 QLEV = [0.5, 0.75, 0.9, 0.95, 0.99]
@@ -339,12 +339,7 @@ def main():
     print('=' * 78 + f'\nSTEP 1  pair Era-3 observations with CNN P50 ({a.seed})\n' + '=' * 78)
     print(f'  VAL_STATION_HEIGHTS={os.environ["VAL_STATION_HEIGHTS"]}; non-10 m stations: '
           + ', '.join(f'{k} {v:g}' for k, v in sorted(heights.items()) if v != 10.0))
-    # The station table (stations + stencils on the RTMA grid) is case-independent;
-    # a v4 points dir falls back to the v3 one.
-    _tp = POINTS / 'station_table.nc'
-    if not _tp.exists():
-        _tp = ROOT / 'sf_bay_rtma_v3' / 'results' / 'v1940_points' / 'station_table.nc'
-    tab = xr.open_dataset(_tp)
+    tab = xr.open_dataset(POINTS / 'station_table.nc')
     ds = load_e3_points(a.seed)
     pairs, groups = pair_stations(ds, tab, vmm, sink, a.min_pairs)
     pairs, groups = auto_merge(pairs, tab, groups, a.merge_km)
@@ -465,7 +460,7 @@ def main():
          'klass': (('y', 'x'), cls),
          'station_weight': (('y', 'x'), wsum.astype('float32'))},
         coords={'y': ls_coord(y), 'x': ls_coord(x)},
-        attrs={'title': 'CNN-RTMA v3 observation-based factor correction (BA)',
+        attrs={'title': 'CNN-RTMA observation-based factor correction (BA)',
                'seed': a.seed, 'anchor_quantile': a.level, 'sigma_km': a.sigma_km,
                'floor': a.floor,
                'floor_note': 'factor >= floor everywhere: the adjustment never reduces wind speed '

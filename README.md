@@ -42,18 +42,18 @@ A single script handles preprocessing, training, config archiving, inference, an
 ```bash
 # Single GPU
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay_conus404 \
+    --case-study case_studies/sf_bay_rtma \
     --run-name my_experiment
 
 # Multi-GPU (4x DDP)
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay_conus404 \
+    --case-study case_studies/sf_bay_rtma \
     --run-name my_experiment \
     --gpus 4
 
 # Skip steps on reruns
 python scripts/run_training_pipeline.py \
-    --case-study case_studies/sf_bay_conus404 \
+    --case-study case_studies/sf_bay_rtma \
     --run-name my_experiment \
     --skip-preprocess --skip-train
 ```
@@ -64,7 +64,7 @@ Use a trained model to downscale new coarse data:
 
 ```bash
 python scripts/run_inference.py \
-    --case-study case_studies/sf_bay_conus404 \
+    --case-study case_studies/sf_bay_rtma \
     --run-name my_experiment \
     --start-date 2024-01-01 \
     --end-date 2026-12-31
@@ -83,9 +83,9 @@ sbatch scripts/cpu_tallgrass.slurm
 ### Monitor training
 
 ```bash
-tensorboard --logdir %COSMOS_RESULTS_ROOT%\sf_bay_conus404\results\<run_name>\logs
+tensorboard --logdir %COSMOS_RESULTS_ROOT%\sf_bay_rtma\results\<run_name>\logs
 # Linux/HPC:
-# tensorboard --logdir $COSMOS_RESULTS_ROOT/sf_bay_conus404/results/<run_name>/logs
+# tensorboard --logdir $COSMOS_RESULTS_ROOT/sf_bay_rtma/results/<run_name>/logs
 ```
 
 ## Project Structure
@@ -109,7 +109,7 @@ cosmos-wind-cnn/
 │   ├── cpu_tallgrass.slurm      # SLURM: CPU pipeline
 │   └── gpu_tallgrass.slurm      # SLURM: GPU pipeline (4x V100 DDP)
 ├── case_studies/                # Per-domain configs only (data/results are external)
-│   ├── sf_bay_conus404/         # San Francisco Bay, CONUS404 HR (working example)
+│   ├── sf_bay_rtma/         # San Francisco Bay, CONUS404 HR (working example)
 │   ├── puget_sound/             # Puget Sound (in progress)
 │   └── _template/               # Template for new case studies
 ├── docs/                        # Documentation
@@ -136,7 +136,7 @@ The repo case-study folders hold **only** `configs/` + `README.md`. Everything e
 
 ```
 <COSMOS_DATA_ROOT>/<case>/raw_data/        # Raw NetCDF input files (shared across runs)
-    e.g. G:\03-downscaling_meteo_cnn\sf_bay_conus404\raw_data\
+    e.g. G:\03-downscaling_meteo_cnn\sf_bay_rtma\raw_data\
 
 case_studies/<case>/                       # Repo: configs + README only
 ├── configs/                               # YAML configs (checked into git)
@@ -170,7 +170,7 @@ Each case study is self-contained under `case_studies/`:
 
 | Case Study | Domain | Resolution | Status |
 |------------|--------|------------|--------|
-| `sf_bay_conus404` | San Francisco Bay (CONUS404 HR) | 4 km | Complete |
+| `sf_bay_rtma` | San Francisco Bay (CONUS404 HR) | 4 km | Complete |
 | `puget_sound` | Puget Sound | TBD | Data prep |
 
 To add a new case study, see [docs/adding_case_study.md](docs/adding_case_study.md).

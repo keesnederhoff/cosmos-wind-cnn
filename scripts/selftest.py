@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Cheap pre-launch self-test of the v4 plumbing (login-node safe, no data read).
+"""Cheap pre-launch self-test of the plumbing (login-node safe, no data read).
 
 1. gap_hours split logic on a synthetic hourly record spanning the real window.
 2. split_dates default (gap 0) is bit-identical to the v3 ratio-free behaviour.
-3. v4 YAML configs load and carry the recipe.
-4. validation config registers the v4 models and the V4T/EY eras.
+3. YAML configs load and carry the recipe.
+4. validation config registers the models and the WY26/EY eras.
 5. make_tau_grid(51) has an exact median and top level 0.9902; the shipped levels snap
    onto actual grid levels with no collapse.
 """
@@ -38,25 +38,25 @@ assert str(tr.time.values[-1])[:13] == '2024-09-28T23' and str(va.time.values[-1
 assert te.time.size == te0.time.size
 print('PASS gap_hours split')
 
-tcfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma_v4/configs/training.yaml'))
-pcfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma_v4/configs/preprocessing.yaml'))
-icfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma_v4/configs/inference_preprocessing_1940.yaml'))
+tcfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma/configs/training.yaml'))
+pcfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma/configs/preprocessing.yaml'))
+icfg = yaml.safe_load(open(REPO / 'case_studies/sf_bay_rtma/configs/inference_preprocessing_1940.yaml'))
 assert tcfg['n_quantiles'] == 51 and tcfg['n_gust_quantiles'] == 19 and tcfg['dropout_rate'] == 0.1
 assert set(pcfg['file_dict']) == {'hr_u', 'hr_v', 'hr_gust', 'lr_u', 'lr_v', 'lr_cloud', 'lr_gust', 'static_terrain'}
 assert 'earthrel' in pcfg['file_dict']['hr_u'] and 'earthrel' in pcfg['file_dict']['hr_v']
 assert pcfg['gap_hours'] == 48 and str(pcfg['split_dates']['val_end']) == '2025-10-01'
 assert set(icfg['sources']) == {'lr_u', 'lr_v', 'lr_gust', 'lr_cloud', 'static_terrain'}
 for k, f in list(pcfg['file_dict'].items()) + [(k, v['file']) for k, v in icfg['sources'].items()]:
-    p = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/sf_bay_rtma_v4/raw_data') / f
+    p = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay/sf_bay_rtma/raw_data') / f
     if 'earthrel' in f:
         continue                      # created by stage 1
     assert p.exists(), f'missing {p}'
-print('PASS v4 configs (inputs exist; earthrel created by stage 1)')
+print('PASS configs (inputs exist; earthrel created by stage 1)')
 
 g = make_tau_grid(51)
 print('tau grid 51: median', g[25], 'top', g[-1])
 assert abs(g[25] - 0.5) < 1e-12 and abs(g[-1] - 0.9902) < 1e-4
-lv = [float(x) for x in os.environ.get('V4_QLEVELS', '0.0490,0.1078,0.2451,0.5000,0.7549,0.8922,0.9510,0.9902').split(',')]
+lv = [float(x) for x in os.environ.get('CNN_QLEVELS', '0.0490,0.1078,0.2451,0.5000,0.7549,0.8922,0.9510,0.9902').split(',')]
 idx = [int(np.argmin(np.abs(g - v))) for v in lv]
 assert len(set(idx)) == len(lv) and max(abs(g[i] - v) for i, v in zip(idx, lv)) < 1e-4, (idx, lv)
 print('PASS tau grid: shipped levels are exact grid levels', [round(float(g[i]), 4) for i in idx])

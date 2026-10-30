@@ -30,18 +30,18 @@ import numpy as np
 import xarray as xr
 
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-# v3 defaults; the v4 chain sets CNN_CASE / CNN_PREFIX (and omits --seed: the pick is read
+# The chain sets CNN_CASE / CNN_PREFIX (and omits --seed: the pick is read
 # from <case>/results/chosen_seed.txt written by select_seed_points.py).
-CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma_v3')
-PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA_v3')
-VER = PREFIX.split('_')[-1]
+CASE = ROOT / os.environ.get('CNN_CASE', 'sf_bay_rtma')
+PREFIX = os.environ.get('CNN_PREFIX', 'CNN_RTMA')
+VER = 'v3' if PREFIX.endswith('_v3') else 'current'
 
 
 def _default_seed():
     p = CASE / 'results' / 'chosen_seed.txt'
     if os.environ.get('CNN_CASE') and p.exists():
         return p.read_text().strip()
-    return 'r1b_do010_s3'
+    return 's3'
 
 
 TUNITS = 'hours since 1940-01-01 00:00:00'
@@ -165,7 +165,7 @@ def main():
         print(f'  direction from {dir_dir} (best_direction.pth track); speed from the speed track')
     common = {
         'institution': 'USGS Pacific Coastal and Marine Science Center',
-        'source': (f'cosmos-wind-cnn {VER} quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
+        'source': (f'cosmos-wind-cnn quantile head (3D U-Net), ERA5 -> RTMA 2.5 km '
                    'downscaling; seed ' + a.seed + ', speed from checkpoint best_speed.pth'
                    + (', direction from checkpoint best_direction.pth (epoch 27, best on stations)'
                       if dir_dir else ' (speed and direction)')),
@@ -195,9 +195,9 @@ def main():
     writers = {}
     if 'raw' in kinds:
         writers['raw'] = create(str(names['raw']) + '.tmp', first, common,
-                                f'SF Bay 10 m wind, CNN-RTMA {VER} P50 (raw)', {'bias_correction': 'none'})
+                                f'SF Bay 10 m wind, CNN-RTMA P50 (raw)', {'bias_correction': 'none'})
     writers['BA'] = create(str(names['BA']) + '.tmp', first, common,
-                           f'SF Bay 10 m wind, CNN-RTMA {VER} P50, observation-based bias adjustment (BA)',
+                           f'SF Bay 10 m wind, CNN-RTMA P50, observation-based bias adjustment (BA)',
                            {'bias_correction': (
                                'multiplicative factor per cell = obs/CNN at the 90th percentile, fitted at '
                                f'{len(ba_attrs.get("stations", "").split(","))} stations over Era 3 '

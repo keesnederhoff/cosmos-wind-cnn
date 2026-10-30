@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reliability of the v4 predictive quantiles against station observations.
+"""Reliability of the predictive quantiles against station observations.
 
 Question: when the model says "the 99th percentile of the wind speed is q", is the
 observed speed <= q about 99% of the time? Uses the step-1 station point files of the
@@ -30,8 +30,8 @@ import xarray as xr
 
 HERE = Path(__file__).resolve().parent
 ROOT = Path('/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay')
-RES = ROOT / 'sf_bay_rtma_v4' / 'results'
-TABLE = ROOT / 'sf_bay_rtma_v3' / 'results' / 'v1940_points' / 'station_table.nc'
+RES = ROOT / 'sf_bay_rtma' / 'results'
+TABLE = ROOT / 'sf_bay_rtma' / 'results' / 'v1940_points' / 'station_table.nc'
 WINDOWS = {
     'WY2025 (val)': ('2024-10-01', '2025-09-30T23'),
     'WY2026 (test)': ('2025-10-01', '2026-10-01T23'),

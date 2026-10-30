@@ -5,14 +5,14 @@ from cosmos_wind_cnn.utils.config import get_data_dir, get_run_dirs
 
 def test_get_data_dir_uses_data_root(monkeypatch):
     monkeypatch.setenv('COSMOS_DATA_ROOT', '/storage')
-    assert get_data_dir('case_studies/sf_bay_conus404') == \
+    assert get_data_dir('case_studies/sf_bay_rtma') == \
         Path('/storage') / 'sf_bay_conus404' / 'raw_data'
 
 
 def test_get_data_dir_errors_when_unset(monkeypatch):
     monkeypatch.delenv('COSMOS_DATA_ROOT', raising=False)
     with pytest.raises(RuntimeError, match='COSMOS_DATA_ROOT'):
-        get_data_dir('case_studies/sf_bay_conus404')
+        get_data_dir('case_studies/sf_bay_rtma')
 
 
 def test_get_run_dirs_layout(monkeypatch):

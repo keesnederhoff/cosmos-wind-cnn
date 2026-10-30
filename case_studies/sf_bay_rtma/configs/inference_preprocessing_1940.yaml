@@ -1,10 +1,10 @@
-# FULL-RECORD inference config for the v4 recipe, 1940-01-01 -> 2026-10-01.
+# FULL-RECORD inference config for the recipe, 1940-01-01 -> 2026-10-01.
 #
 # FIVE input channels (lr_gust comes from the gust variable PAIR's low_res key,
 # not a predictor block). Trimmed to the five so no other source's shorter span
 # intersects the time axis away. Use with INFER_CONFIG=<this file>.
 #
-# The v4 ERA5 files are used as delivered: no staging, no border fill. Training
+# The ERA5 files are used as delivered: no staging, no border fill. Training
 # (preprocessing.yaml) reads the very same files, so inputs are consistent between
 # training and inference by construction.
 

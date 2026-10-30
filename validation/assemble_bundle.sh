@@ -5,9 +5,9 @@ set -euo pipefail
 B=/caldera/projects/usgs/hazards/pcmsc/cosmos/cnn_wind_sfbay
 V=$B/validation
 OBS=$B/sf_bay_observed_data
-RES=$B/sf_bay_rtma/results
+RES=$B/archive/sf_bay_rtma_v2/results      # v2 CNN arms, comparison only
 RAW=$B/sf_bay_rtma/raw_data
-C404=$B/sf_bay_conus404/raw_data
+C404=$B/archive/sf_bay_conus404/raw_data
 M=$V/modeled_data
 
 mkdir -p "$V"/observed_data "$V"/reference "$M"/cnn_fullrecord "$M"/era5 "$M"/conus404 "$M"/rtma "$V"/results
@@ -50,18 +50,18 @@ done
 for f in ERA5_eastward_wind_1940_2026_UTM.nc ERA5_northward_wind_1940_2026_UTM.nc; do
   ln -sf "$RAW/$f" "$M/era5/$f"
 done
-ln -sf "$C404/ERA5_air_temperature_1940_2026_UTM.nc" \
+ln -sf "$RAW/ERA5_air_temperature_1940_2026_UTM.nc" \
        "$M/era5/ERA5_air_temperature_1940_2026_UTM.nc"
 for f in CONUS404_SFbay_4km_eastward_wind_1979_2021_UTM10.nc \
          CONUS404_SFbay_4km_northward_wind_1979_2021_UTM10.nc \
          CONUS404_SFbay_4km_air_temperature_1979_2021_UTM10.nc; do
   ln -sf "$C404/$f" "$M/conus404/$f"
 done
-for f in RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10.nc \
-         RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10.nc \
-         RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc; do
-  ln -sf "$RAW/$f" "$M/rtma/$f"
+# u/v MUST be the earth-relative files; the plain-named originals are rotated ~11.9 deg.
+for f in RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10 RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10; do
+  ln -sf "$RAW/${f}_earthrel.nc" "$M/rtma/$f.nc"
 done
+ln -sf "$RAW/RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc" "$M/rtma/RTMA_SFbay_2p5km_static_landsea_static_UTM10.nc"
 
 echo "=== bundle assembled at $V ==="
 for d in observed_data reference modeled_data/cnn_fullrecord modeled_data/era5 \
