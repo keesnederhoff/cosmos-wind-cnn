@@ -2,19 +2,43 @@
 
 The 1-, 10- and 100-year 10 m wind speed for ERA5, the RTMA analysis, CNN-RTMA v3 raw (P50) and CNN-RTMA v3 bias-corrected (P50), fitted the same way at 36 observation stations and scored against them.
 
-Plan: `g:\03-downscaling_meteo_cnn\plans\2026-10-02-wind-return-levels.md`. Built 2026-10-02.
+Plan: `validation/plans/2026-10-02-wind-return-levels.md`. Built 2026-10-02. Moved into the repo with `validation/plans/2026-10-03-wind-extremes-to-repo.md`.
 
-## Run order
+## Environment
 
-Use the `acfcd_rain` conda env (on this desktop: prepend `envs\acfcd_rain`, `Library\bin` and `Scripts` to PATH, or `conda activate acfcd_rain`).
+Runs in the `cosmos_wind_cnn` conda env, which has no `cmocean` and no `rainlib`. The return-level code those need is in `evt.py`. Paths come from three environment variables, set before any stage runs (`windx_common.py` raises with the set-command if one is missing):
 
 ```
-python s1_extract_products.py   # 220 GB CNN files -> daily-max cubes + station series (~15 min, resumable)
+conda activate cosmos_wind_cnn
+set KMP_DUPLICATE_LIB_OK=TRUE
+set COSMOS_VALIDATION_DATA_ROOT=g:\01_meteorlogical_analysis_sfbay
+set COSMOS_WINDX_CNN_ROOT=g:\03-downscaling_meteo_cnn
+set COSMOS_WINDX_OUTPUT_ROOT=g:\03-downscaling_meteo_cnn\wind_extremes
+```
+
+- `COSMOS_VALIDATION_DATA_ROOT` is the validation bundle (`modeled_data\`, `observed_data\`, `reference\`), the same variable `validation/config.py` reads.
+- `COSMOS_WINDX_CNN_ROOT` holds `sf_bay_rtma\results` and `cnn_fullrecord`.
+- `COSMOS_WINDX_OUTPUT_ROOT` receives `cache\`, `results\` and `figures\`. Nothing generated is written inside the repo. All file names below that start with `cache`, `results` or `figures` are relative to this root.
+
+On Linux (Caldera) use `export` with the equivalent paths.
+
+`evt.py` is a vendored copy of 16 objects from the private ACFCD `rainlib` (`extremes.py`, `trends.py`), taken at repo commit 902ae61. Do not edit it; re-copy if rainlib changes. `tests/test_evt_vendored.py` checks it against `rainlib` and skips when `rainlib` is not importable (run it in the `acfcd_rain` env).
+
+## Run
+
+From this folder, in order:
+
+```
+python s1_extract_products.py   # 220 GB CNN files -> daily-max cubes + station series (hours; resumable)
 python s2_prepare_obs.py        # obs QC, hourly means, station table, top-peak review table (~35 s)
-python s3_fit_return_levels.py  # POT/GPD on grids (full + common) and stations (full + matched) (~2 min with cached grids)
+python s3_fit_return_levels.py  # POT/GPD on grids (full + common) and stations (full + matched) (~15 min from cached grids)
 python s4_figures.py            # 6 maps, 2 scatters, skill table, BC-tail diagnostic (~3 min)
-python -m pytest tests -q       # 10 unit tests of the helpers
+python s5_obs_correction.py     # observation-anchored correction of the CNN raw maps
+python s6_station_eva.py        # per-station return-level plots, obs vs every flavour
+python -m pytest tests -q       # unit tests of the helpers
 ```
+
+s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It needs the 127 GB CNN files and takes hours. s2 to s6 take about 25 min together. `checks\compare_to_golden.py` compares a fresh run with a saved snapshot of results (rtol 1e-9).
 
 `windx_common.py` holds every path and parameter in its CONFIGURATION block.
 - `s1` skips water years already in `cache\tmp_<product>\`.
@@ -27,7 +51,7 @@ python -m pytest tests -q       # 10 unit tests of the helpers
 |---|---|---|
 | CNN-RTMA v3 raw / BC | `sf_bay_rtma\results\CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_{raw,BC}_19400101_20260810.nc` | P50 only (quantile index 1) |
 | BC map | `sf_bay_rtma\results\BC_map_r1b_do010_s3_valfit.nc` | used only for the clamp diagnostic |
-| ERA5 | `g:\01_meteorlogical_analysis_sfbay\modeled_data\era5\fm_netcdf\ERA5_{eastward,northward}_wind_1940_2025_UTM.nc` | 25 km |
+| ERA5 | `modeled_data\era5\fm_netcdf\ERA5_{eastward,northward}_wind_1940_2025_UTM.nc` (under `COSMOS_VALIDATION_DATA_ROOT`) | 25 km |
 | RTMA | `...\modeled_data\rtma\fm_netcdf\RTMA_SFbay_2p5km_wind_speed_2011_2026_UTM10.nc` | 2.5 km |
 | Obs | `...\observed_data\pws_sfbay_waterfront_{iem,ndbc}.nc`, 4 USGS mooring files | CWOP not used (file fails to open) |
 
