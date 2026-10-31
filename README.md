@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project trains a 3D U-Net neural network to learn the mapping between low-resolution (LR) and high-resolution (HR) meteorological fields — for example, ERA5 (~31 km) to CONUS404 (4 km) for the SF Bay case study. Once trained, the model can generate HR predictions from LR inputs, including for time periods and data sources (e.g., CMIP6) not seen during training.
+This project trains a 3D U-Net neural network to learn the mapping between low-resolution (LR) and high-resolution (HR) meteorological fields — for example, ERA5 (~31 km) to RTMA (2.5 km) for the SF Bay case study. Once trained, the model can generate HR predictions from LR inputs, including for time periods and data sources (e.g., CMIP6) not seen during training.
 
 **Supported variables:**
 - Wind components (U, V) with physics-informed loss (speed + direction)
@@ -74,10 +74,10 @@ python scripts/run_inference.py \
 
 ```bash
 # GPU pipeline (4x V100 DDP)
-sbatch scripts/gpu_tallgrass.slurm
+bash scripts/submit_chain.sh --dry   # lint and print the DAG, submit nothing
 
 # CPU pipeline
-sbatch scripts/cpu_tallgrass.slurm
+bash scripts/submit_chain.sh         # submit the whole chain
 ```
 
 ### Monitor training
@@ -105,13 +105,13 @@ cosmos-wind-cnn/
 │   ├── preprocess_training.py   # Standalone preprocessing
 │   ├── preprocess_inference.py  # Standalone inference regridding
 │   ├── inference_full_record.py # Standalone full-record inference
-│   ├── validate_inference.py    # Station-level validation (NDBC, moorings)
-│   ├── cpu_tallgrass.slurm      # SLURM: CPU pipeline
-│   └── gpu_tallgrass.slurm      # SLURM: GPU pipeline (4x V100 DDP)
+│   └── submit_chain.sh          # SLURM: full unattended ERA5 -> RTMA chain
 ├── case_studies/                # Per-domain configs only (data/results are external)
-│   ├── sf_bay_rtma/         # San Francisco Bay, CONUS404 HR (working example)
+│   ├── sf_bay_rtma/             # San Francisco Bay, ERA5 -> RTMA 2.5 km (current)
 │   ├── puget_sound/             # Puget Sound (in progress)
 │   └── _template/               # Template for new case studies
+├── validation/                  # Station validation of the products
+├── archive/                     # Old scripts and case configs, not maintained
 ├── docs/                        # Documentation
 ├── tests/                       # Unit tests
 └── pyproject.toml               # Package definition
@@ -170,7 +170,7 @@ Each case study is self-contained under `case_studies/`:
 
 | Case Study | Domain | Resolution | Status |
 |------------|--------|------------|--------|
-| `sf_bay_rtma` | San Francisco Bay (CONUS404 HR) | 4 km | Complete |
+| `sf_bay_rtma` | San Francisco Bay (RTMA HR) | 2.5 km | Complete |
 | `puget_sound` | Puget Sound | TBD | Data prep |
 
 To add a new case study, see [docs/adding_case_study.md](docs/adding_case_study.md).

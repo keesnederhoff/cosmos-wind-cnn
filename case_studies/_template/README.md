@@ -104,5 +104,4 @@ variable_pairs:
   # ... all pairs
 ```
 
-See `case_studies/sf_bay_conus404/` for a worked example (CONUS404 HR / ERA5 LR) and
-`case_studies/sf_bay_rtma/` for an alternative HR source (RTMA HR / ERA5 LR).
+See `case_studies/sf_bay_rtma/` for a worked example (RTMA HR / ERA5 LR).
