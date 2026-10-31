@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 # === CONFIGURATION ===
-GOLDEN = Path(r"g:\03-downscaling_meteo_cnn\wind_extremes\results_golden_20261003")
+GOLDEN = Path(r"g:\03-downscaling_meteo_cnn\archive\v3\wind_extremes\results_golden_20261003")
 NEW = Path(r"g:\03-downscaling_meteo_cnn\wind_extremes_repo_check\results")
 RTOL = 1e-9
 FIGURE_CSVS = ["station_eva_table.csv"]   # golden copies in GOLDEN/figures/, new files in NEW.parent/figures/
