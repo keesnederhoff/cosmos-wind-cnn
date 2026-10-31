@@ -73,11 +73,11 @@ python scripts/run_inference.py \
 ### HPC (SLURM)
 
 ```bash
-# GPU pipeline (4x V100 DDP)
-bash scripts/submit_chain.sh --dry   # lint and print the DAG, submit nothing
+# Dry run: lint and print the Slurm DAG
+bash scripts/submit_chain.sh --dry
 
-# CPU pipeline
-bash scripts/submit_chain.sh         # submit the whole chain
+# Submit
+bash scripts/submit_chain.sh
 ```
 
 ### Monitor training
