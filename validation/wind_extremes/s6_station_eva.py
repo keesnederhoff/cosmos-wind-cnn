@@ -57,7 +57,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
-import rainlib.extremes as rx
+import evt as rx
 
 import windx_common as w
 import s3_fit_return_levels as s3f   # side-effect-free import: cache loaders

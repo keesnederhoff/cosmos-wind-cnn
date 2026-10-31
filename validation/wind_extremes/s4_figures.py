@@ -40,19 +40,26 @@ import concurrent.futures as cf
 import math
 from pathlib import Path
 
-import cmocean  # noqa: F401  (registers cmo.* colormaps used via cmocean.cm.*)
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import netCDF4
 import numpy as np
 import pandas as pd
-import rainlib.extremes as rx
+import evt as rx
 
 import windx_common as w
 import s3_fit_return_levels as s3f   # side-effect-free import: reuse its CF-time decoder / mask filler
 from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, diverging_limits, save_figure
 from skill_utils import compute_skill_scores
+
+# cmocean is optional (not in the cosmos_wind_cnn env). Only the BC-tail diagnostic panel (c) uses it;
+# YlGnBu is the closest matplotlib sequential map to cmo.speed.
+try:
+    import cmocean
+    SPEED_CMAP = cmocean.cm.speed
+except ImportError:
+    SPEED_CMAP = "YlGnBu"
 
 # cnn_raw is labelled "P50" in the quantile figure's legend/text box, to make
 # clear it is one predictive-distribution quantile among the three plotted.
@@ -491,7 +498,7 @@ def bc_tail_diagnostic(coast: list) -> None:
     m1 = axes[1].pcolormesh(xe, ye, frac, cmap="viridis", vmin=0.0, vmax=1.0, rasterized=True, zorder=2)
     fig.colorbar(m1, ax=axes[1], shrink=0.9).set_label("Fraction of POT peaks clamped")
 
-    m2 = axes[2].pcolormesh(xe, ye, rtma_top, cmap=cmocean.cm.speed, rasterized=True, zorder=2)
+    m2 = axes[2].pcolormesh(xe, ye, rtma_top, cmap=SPEED_CMAP, rasterized=True, zorder=2)
     fig.colorbar(m2, ax=axes[2], shrink=0.9).set_label("RTMA fit-window cap (m s$^{-1}$)")
 
     labels = ["(a) BC $-$ raw RP100", "(b) peaks clamped", "(c) RTMA cap"]

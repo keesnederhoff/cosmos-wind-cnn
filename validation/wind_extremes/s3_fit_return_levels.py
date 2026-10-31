@@ -37,7 +37,7 @@ import time
 import netCDF4
 import numpy as np
 import pandas as pd
-import rainlib.trends as rt
+import evt as rt
 
 import windx_common as w
 

@@ -17,10 +17,6 @@ and the rl_map_cnn_raw_*.nc maps that s3 produces).
 # === CONFIGURATION ===
 from pathlib import Path
 
-STATIC_WATER_FILE = Path(
-    r"g:\01_meteorlogical_analysis_sfbay\modeled_data\rtma\fm_netcdf"
-    r"\RTMA_SFbay_2p5km_surface_height_static_UTM10.nc"
-)
 GRID_TOL_M = 0.5                       # x/y coordinate match tolerance, map vs. water-mask grid
 
 VARIANTS = ["V0_none", "V1_global", "V2_landwater", "V3_idw", "V4_lw_kernel", "V5_lw_gp"]
@@ -58,6 +54,10 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, RBF, WhiteKernel
 
 import windx_common as w
+
+# Defined here, not in the configuration block above: it needs w.MET_ROOT (an env-var root) from the import.
+STATIC_WATER_FILE = w.MET_ROOT / "modeled_data" / "rtma" / "fm_netcdf" / "RTMA_SFbay_2p5km_surface_height_static_UTM10.nc"
+
 from s4_figures import cell_edges, _draw_coastline, NETWORK_MARKERS
 from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, save_figure
 from skill_utils import compute_skill_scores

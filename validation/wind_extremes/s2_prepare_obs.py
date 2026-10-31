@@ -4,7 +4,7 @@ Reads IEM/NDBC/USGS raw archives, builds one common hourly series per station,
 writes cache/obs_hourly.nc and results/station_table.csv, then (Step 7) a
 top-peak review table at results/qc_top_peaks.csv. Product columns in that
 table are filled only once the Stage-1 station caches exist; see Task 6 of
-g:\03-downscaling_meteo_cnn\plans\2026-10-02-wind-return-levels.md.
+validation/plans/2026-10-02-wind-return-levels.md.
 """
 
 # === CONFIGURATION ===
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import netCDF4
 
-import rainlib.extremes as rx
+import evt as rx
 import windx_common as w
 
 HOURLY_START = pd.Timestamp("1914-05-01 00:00:00")

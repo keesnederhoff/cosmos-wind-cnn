@@ -1,17 +1,30 @@
 # === CONFIGURATION ===
+import os
 from pathlib import Path
-ROOT       = Path(r"g:\03-downscaling_meteo_cnn\wind_extremes")
+
+
+def _root(var: str) -> Path:
+    """Env-var root, as validation/config.py. Raises with set-commands for both platforms."""
+    val = os.environ.get(var)
+    if not val:
+        raise RuntimeError(f"{var} is not set.\n  Windows:  set {var}=...\n  Caldera:  export {var}=...\n"
+                           f"See validation/wind_extremes/README.md, section Environment.")
+    return Path(val)
+
+
+ROOT       = _root("COSMOS_WINDX_OUTPUT_ROOT")      # cache/, results/, figures/ (outside the repo)
+CNN_ROOT   = _root("COSMOS_WINDX_CNN_ROOT")         # holds sf_bay_rtma/results and cnn_fullrecord
+MET_ROOT   = _root("COSMOS_VALIDATION_DATA_ROOT")   # validation bundle: modeled_data/, observed_data/, reference/
 CACHE_DIR  = ROOT / "cache"
 RESULT_DIR = ROOT / "results"
 FIG_DIR    = ROOT / "figures"
 
-CNN_DIR    = Path(r"g:\03-downscaling_meteo_cnn\sf_bay_rtma\results")
+CNN_DIR    = CNN_ROOT / "sf_bay_rtma" / "results"
 CNN_RAW    = CNN_DIR / "CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_raw_19400101_20260810.nc"
 CNN_BC     = CNN_DIR / "CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_BC_19400101_20260810.nc"
 BC_MAP     = CNN_DIR / "BC_map_r1b_do010_s3_valfit.nc"
 CNN_Q_INDEX = 1                     # quantile axis index of tau = 0.5 (P50)
 
-MET_ROOT   = Path(r"g:\01_meteorlogical_analysis_sfbay")
 ERA5_U     = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf" / "ERA5_eastward_wind_1940_2025_UTM.nc"
 ERA5_V     = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf" / "ERA5_northward_wind_1940_2025_UTM.nc"
 RTMA_WS    = MET_ROOT / "modeled_data" / "rtma" / "fm_netcdf" / "RTMA_SFbay_2p5km_wind_speed_2011_2026_UTM10.nc"
@@ -40,7 +53,7 @@ PRODUCT_LABEL.update({"cnn_q82": "CNN-RTMA τ0.82", "cnn_q92": "CNN-RTMA τ0.92"
 # USGS observation-anchored BA product (2026-10-02): P50 x one factor per cell (obs/CNN at hourly P90,
 # 39 stations, 2020-2026). The file has no quantile axis (index None). The RP maps show it in panel (d)
 # in place of the clamped quantile-map BC.
-CNN_BA_DIR    = Path(r"g:\03-downscaling_meteo_cnn\cnn_fullrecord")
+CNN_BA_DIR    = CNN_ROOT / "cnn_fullrecord"
 CNN_BA        = CNN_BA_DIR / "CNN_RTMA_v3_r1b_do010_s3_P50_uvs_BA_19400101_20260810.nc"
 BA_FACTOR_MAP = CNN_BA_DIR / "BA_factor_map_r1b_do010_s3_E3q90.nc"
 MAP_PRODUCTS  = ["era5", "rtma", "cnn_raw", "cnn_ba"]   # panel order of the 1x4 RP maps and main scatters
@@ -91,7 +104,7 @@ import numpy as np
 import pandas as pd
 import pyproj
 import netCDF4
-import rainlib.extremes as rx
+import evt as rx
 
 _UTM10_TRANSFORMER = pyproj.Transformer.from_crs(4326, 32610, always_xy=True)
 
