@@ -1,0 +1,562 @@
+"""Stage 4: figures and skill tables for the wind return-level comparison.
+
+Task 9 (maps): one PNG per return period (1, 10, 100) x window (full, common),
+1x4 panels in MAP_PRODUCTS order (era5, rtma, cnn_raw, cnn_ba). Panel positions are
+fixed -- a product whose results/rl_map_<product>_<window>.nc does not exist
+yet gets a blank panel with "not yet available" instead of reflowing the grid.
+
+Task 10 (scatter + skill + BC-tail diagnostic):
+  - Step 1/2: station scatter (1x3, one per RP) for mode in (full, matched),
+    with a skill text box per product and results/skill_station_rl.csv.
+  - Step 3: figures/bc_tail_diagnostic.png, skipped with a message while the
+    CNN caches/maps are not yet available.
+
+Run order: after s3_fit_return_levels.py. Resumable in the trivial sense that
+it only reads what exists; nothing here is slow enough to need checkpointing.
+"""
+
+# === CONFIGURATION ===
+PRODUCT_COLORS = {"era5": "#7f7f7f", "rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_bc": "#000000",
+                  "cnn_ba": "#2ca02c"}
+NETWORK_MARKERS = {"IEM": "o", "NDBC": "s"}
+MAP_EXTENT = (316250.0, 723750.0, 4013250.0, 4323250.0)   # xmin, xmax, ymin, ymax (m, UTM10)
+SCALEBAR_M = 50000.0
+# RP maps zoom on the stations (station x 510-621 km, y 4132-4271 km, plus ~12 km margin)
+ZOOM_EXTENT = (498000.0, 634000.0, 4108000.0, 4283000.0)
+ZOOM_SCALEBAR_M = 20000.0
+MAP_CMAP = "turbo"
+MAP_VLIM = (5.0, 30.0)               # m/s, one fixed colour range for every RP map (comparable across figures)
+MAP_LEVEL_STEP = 1.0                 # m/s, discrete colour bins on the RP maps
+MIN_SKILL_N = 5
+
+# Extra CNN-quantile scatter (Task: cnn_q82/cnn_q92). Kept separate from
+# PRODUCT_COLORS/PRODUCTS so the original 4-product maps and scatters never
+# reflow; this is a standalone 1x3 figure of its own.
+QUANT_SCATTER_PRODUCTS = ["rtma", "cnn_raw", "cnn_q82", "cnn_q92"]
+QUANT_COLORS = {"rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_q82": "#d62728", "cnn_q92": "#9467bd"}
+
+# === IMPORTS ===
+import concurrent.futures as cf
+import math
+from pathlib import Path
+
+import cmocean  # noqa: F401  (registers cmo.* colormaps used via cmocean.cm.*)
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import netCDF4
+import numpy as np
+import pandas as pd
+import rainlib.extremes as rx
+
+import windx_common as w
+import s3_fit_return_levels as s3f   # side-effect-free import: reuse its CF-time decoder / mask filler
+from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, diverging_limits, save_figure
+from skill_utils import compute_skill_scores
+
+# cnn_raw is labelled "P50" in the quantile figure's legend/text box, to make
+# clear it is one predictive-distribution quantile among the three plotted.
+QUANT_LABELS = {**w.PRODUCT_LABEL, "cnn_raw": "CNN-RTMA P50"}
+
+
+# === SMALL HELPERS ===
+
+def _filled(x) -> np.ndarray:
+    return s3f._filled(x)
+
+
+def cell_edges(centers: np.ndarray) -> np.ndarray:
+    """Cell edges from 1-D centre coordinates on a regular grid."""
+    centers = np.asarray(centers, dtype=float)
+    step = float(np.median(np.diff(centers)))
+    return np.concatenate([centers - step / 2.0, [centers[-1] + step / 2.0]])
+
+
+def _read_map_rp(product: str, window: str, rp: int):
+    """(x, y, rl_<rp> array) for a product/window map, or None if it doesn't exist yet."""
+    path = w.RESULT_DIR / f"rl_map_{product}_{window}.nc"
+    if not path.exists():
+        return None
+    with netCDF4.Dataset(path) as ds:
+        x = np.asarray(ds.variables["x"][:], dtype=np.float64)
+        y = np.asarray(ds.variables["y"][:], dtype=np.float64)
+        arr = _filled(ds.variables[f"rl_{rp}"][:, :])
+    return x, y, arr
+
+
+def _draw_coastline(ax, coast: list) -> None:
+    for poly in coast:
+        ax.plot(poly[:, 0], poly[:, 1], color="0.35", lw=0.4, zorder=3)
+
+
+def _finish_map_panel(ax, letter: str, title: str, window: str, extent=MAP_EXTENT) -> None:
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
+    ax.set_aspect("equal")
+    km_axes(ax)
+    ax.text(0.02, 0.97, f"({letter}) {title}", transform=ax.transAxes, ha="left", va="top",
+            fontsize=12, fontweight="bold", zorder=11, color="black",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.75))
+    if window == "common":
+        ax.text(0.98, 0.97, "WY2012–2025", transform=ax.transAxes, ha="right", va="top",
+                fontsize=10, zorder=11)
+
+
+# === TASK 9: MAPS ===
+
+def _map_color_limits(rp: int, window: str, station_rl: pd.DataFrame) -> tuple[float, float]:
+    """2nd-98th pct of pooled rtma/cnn_raw/cnn_ba map values inside ZOOM_EXTENT, plus
+    obs RLs, rounded outward to whole m/s."""
+    pooled = []
+    for product in ("rtma", "cnn_raw", "cnn_ba"):
+        got = _read_map_rp(product, window, rp)
+        if got is None:
+            continue
+        x, y, arr = got
+        inside = ((x[None, :] >= ZOOM_EXTENT[0]) & (x[None, :] <= ZOOM_EXTENT[1])
+                  & (y[:, None] >= ZOOM_EXTENT[2]) & (y[:, None] <= ZOOM_EXTENT[3]))
+        finite = arr[inside & np.isfinite(arr)]
+        if finite.size:
+            pooled.append(finite)
+
+    obs = station_rl[(station_rl["mode"] == "full") & (station_rl["source"] == "obs")
+                      & (station_rl["status"] == "ok")][f"rl_{rp}"].dropna().to_numpy(dtype=float)
+    if obs.size:
+        pooled.append(obs)
+
+    if not pooled:
+        return 0.0, 1.0
+    pooled = np.concatenate(pooled)
+    lo = np.percentile(pooled, 2.0)
+    hi = np.percentile(pooled, 98.0)
+    return float(np.floor(lo)), float(np.ceil(hi))
+
+
+def _obs_points_full(rp: int, station_table: pd.DataFrame, station_rl: pd.DataFrame) -> pd.DataFrame:
+    obs = station_rl[(station_rl["mode"] == "full") & (station_rl["source"] == "obs")
+                      & (station_rl["status"] == "ok")][["station_id", f"rl_{rp}"]]
+    obs = obs.rename(columns={f"rl_{rp}": "rl"})
+    merged = obs.merge(station_table[["station_id", "x", "y"]], on="station_id", how="inner")
+    return merged.dropna(subset=["rl", "x", "y"])
+
+
+def plot_rp_maps(rp: int, window: str, station_table: pd.DataFrame, station_rl: pd.DataFrame,
+                  coast: list) -> Path:
+    apply_style()
+    vmin, vmax = MAP_VLIM
+    # discrete bins make small differences between products readable
+    levels = np.arange(vmin, vmax + MAP_LEVEL_STEP / 2, MAP_LEVEL_STEP)
+    cmap = plt.get_cmap(MAP_CMAP)
+    norm = mpl.colors.BoundaryNorm(levels, cmap.N, extend="both")
+    obs_pts = _obs_points_full(rp, station_table, station_rl)
+
+    fig, axes = plt.subplots(1, 4, figsize=(17, 6.0), sharex=True, sharey=True, constrained_layout=True)
+    mappable = None
+
+    for i, product in enumerate(w.MAP_PRODUCTS):
+        ax = axes[i]
+        letter = chr(ord("a") + i)
+        got = _read_map_rp(product, window, rp)
+        if got is not None:
+            x, y, arr = got
+            xe, ye = cell_edges(x), cell_edges(y)
+            mesh = ax.pcolormesh(xe, ye, arr, cmap=cmap, norm=norm, rasterized=True, zorder=2)
+            mappable = mesh
+        else:
+            ax.text(0.5, 0.5, "not yet available", transform=ax.transAxes, ha="center", va="center",
+                    fontsize=13, color="0.45", style="italic", zorder=6,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="none", alpha=0.75))
+
+        _draw_coastline(ax, coast)
+        if not obs_pts.empty:
+            ax.scatter(obs_pts["x"], obs_pts["y"], c=obs_pts["rl"], cmap=cmap, norm=norm,
+                       s=60, edgecolors="white", linewidths=1.2, zorder=5)
+        _finish_map_panel(ax, letter, w.PRODUCT_LABEL[product], window, extent=ZOOM_EXTENT)
+        if i == 0:
+            add_scalebar(ax, ZOOM_SCALEBAR_M)
+            add_north_arrow(ax)
+
+    if mappable is not None:
+        cb = fig.colorbar(mappable, ax=axes, shrink=0.85, pad=0.012, extend="both",
+                          ticks=np.arange(MAP_VLIM[0], MAP_VLIM[1] + 0.1, 5.0))
+        cb.set_label(f"RP{rp} wind speed (m s$^{{-1}}$)")
+
+    written = save_figure(fig, f"map_rl{rp}_{window}", outdir=w.FIG_DIR, purpose="report")
+    plt.close(fig)
+    return written[0]
+
+
+# === TASK 10 STEP 1-2: SCATTER + SKILL ===
+
+def _slice_rl(df: pd.DataFrame, rp: int) -> pd.DataFrame:
+    return df[["station_id", "network", f"rl_{rp}", f"lo_{rp}", f"hi_{rp}"]].rename(
+        columns={f"rl_{rp}": "rl", f"lo_{rp}": "lo", f"hi_{rp}": "hi"})
+
+
+def pair_stations(station_rl: pd.DataFrame, mode: str, rp: int, product: str) -> "pd.DataFrame | None":
+    """x = obs RL, y = product RL, both 'ok', paired by station_id.
+
+    full mode: obs is the station's own full-record fit (product == 'obs');
+    model is the product's full-window map value at the station cell.
+    matched mode: both obs and model come from that product's matched fit, so
+    the obs value can differ slightly between products (noted in README).
+    """
+    if mode == "full":
+        obs_rows = station_rl[(station_rl["mode"] == "full") & (station_rl["source"] == "obs")
+                               & (station_rl["status"] == "ok")]
+    else:
+        obs_rows = station_rl[(station_rl["mode"] == "matched") & (station_rl["product"] == product)
+                               & (station_rl["source"] == "obs") & (station_rl["status"] == "ok")]
+    if obs_rows.empty:
+        return None
+    obs = _slice_rl(obs_rows, rp).rename(columns={"rl": "obs_rl", "lo": "obs_lo", "hi": "obs_hi"})
+
+    model_rows = station_rl[(station_rl["mode"] == mode) & (station_rl["product"] == product)
+                             & (station_rl["source"] == "model") & (station_rl["status"] == "ok")]
+    if model_rows.empty:
+        return None
+    model = _slice_rl(model_rows, rp).rename(columns={"rl": "model_rl", "lo": "model_lo", "hi": "model_hi"})
+
+    merged = obs.merge(model[["station_id", "model_rl", "model_lo", "model_hi"]], on="station_id", how="inner")
+    merged = merged.dropna(subset=["obs_rl", "model_rl"])
+    return merged if not merged.empty else None
+
+
+def _legend_handles(products_present: list, colors: dict, labels: dict) -> list:
+    handles = [Line2D([], [], marker="o", linestyle="None", color=colors[p],
+                       markerfacecolor=colors[p], markeredgecolor=colors[p],
+                       markersize=8, label=labels[p])
+               for p in products_present]
+    for net, marker in NETWORK_MARKERS.items():
+        handles.append(Line2D([], [], marker=marker, linestyle="None", color="black",
+                               markerfacecolor="none", markeredgecolor="black",
+                               markersize=8, label=net))
+    return handles
+
+
+def _skill_row_from_df(mode: str, rp: int, product: str, df: pd.DataFrame) -> "dict | None":
+    """Skill dict (one skill_station_rl.csv row) from an already-paired obs/model
+    frame (see pair_stations). Shared by the 4-PRODUCT scatter, the extra-product
+    skill-only pass, and the quantile scatter, so the numbers are identical
+    wherever the same (mode, rp, product) triple is computed."""
+    sk = compute_skill_scores(df["obs_rl"].to_numpy(dtype=float),
+                               df["model_rl"].to_numpy(dtype=float),
+                               min_n=MIN_SKILL_N)
+    if not sk:
+        return None
+    median_ratio = float(np.median(df["model_rl"] / df["obs_rl"]))
+    overlap = (df["obs_lo"] <= df["model_hi"]) & (df["model_lo"] <= df["obs_hi"])
+    ci_overlap_frac = float(overlap.mean())
+    return {
+        "mode": mode, "rp": rp, "product": product, "n": sk["n"], "bias": sk["bias"],
+        "rmse": sk["rmse"], "mae": sk["mae"], "sci": sk["sci"], "skill": sk["skill"],
+        "r2": sk["r2"], "median_ratio": median_ratio, "ci_overlap_frac": ci_overlap_frac,
+    }
+
+
+def compute_skill_rows_only(mode: str, station_rl: pd.DataFrame, products: list) -> list:
+    """Skill rows for `products` at every RP, mode, with no plotting. Used to add
+    EXTRA_PRODUCTS (cnn_q82, cnn_q92) to skill_station_rl.csv without touching
+    the original 4-PRODUCT scatter figures."""
+    rows = []
+    for rp in w.RETURN_PERIODS:
+        for product in products:
+            df = pair_stations(station_rl, mode, rp, product)
+            if df is None:
+                continue
+            row = _skill_row_from_df(mode, rp, product, df)
+            if row is not None:
+                rows.append(row)
+    return rows
+
+
+def _scatter_and_skill_figure(mode: str, station_rl: pd.DataFrame, products: list, colors: dict,
+                               labels: dict, fig_name: str) -> list:
+    """1x3 (RP1/10/100) scatter of obs vs model RL for `products`, with a skill
+    text box per product (upper left) and a figure-level legend below. Shared by
+    plot_scatter_and_skill (the original 4-PRODUCT figures) and
+    plot_quantile_scatter (the new rtma/cnn_raw/cnn_q82/cnn_q92 figure)."""
+    apply_style()
+    fig, axes = plt.subplots(1, 3, figsize=(15, 6.0), constrained_layout=True)
+    skill_rows = []
+
+    for j, rp in enumerate(w.RETURN_PERIODS):
+        ax = axes[j]
+        letter = chr(ord("a") + j)
+        text_lines = []
+        pooled_vals = []
+        products_present = []
+
+        for product in products:
+            df = pair_stations(station_rl, mode, rp, product)
+            if df is None:
+                continue
+            products_present.append(product)
+            color = colors[product]
+
+            for net, marker in NETWORK_MARKERS.items():
+                sub = df[df["network"] == net]
+                if sub.empty:
+                    continue
+                ax.scatter(sub["obs_rl"], sub["model_rl"], marker=marker, s=42,
+                           facecolors=color, edgecolors="black", linewidths=0.3, zorder=4)
+
+            xerr = np.vstack([(df["obs_rl"] - df["obs_lo"]).clip(lower=0),
+                               (df["obs_hi"] - df["obs_rl"]).clip(lower=0)])
+            yerr = np.vstack([(df["model_rl"] - df["model_lo"]).clip(lower=0),
+                               (df["model_hi"] - df["model_rl"]).clip(lower=0)])
+            ax.errorbar(df["obs_rl"], df["model_rl"], xerr=xerr, yerr=yerr, fmt="none",
+                        ecolor=color, alpha=0.4, elinewidth=1.0, zorder=3)
+
+            pooled_vals.append(df[["obs_rl", "obs_lo", "obs_hi", "model_rl", "model_lo", "model_hi"]]
+                                .to_numpy(dtype=float).ravel())
+
+            row = _skill_row_from_df(mode, rp, product, df)
+            if row is None:
+                continue
+            skill_rows.append(row)
+            text_lines.append(f"{labels[product]}: bias {row['bias']:+.1f}, "
+                               f"RMSE {row['rmse']:.1f}, skill {row['skill']:.2f}")
+
+        if pooled_vals:
+            allv = np.concatenate(pooled_vals)
+            allv = allv[np.isfinite(allv)]
+            lo, hi = float(np.min(allv)), float(np.max(allv))
+        else:
+            lo, hi = 0.0, 30.0
+        pad = (hi - lo) * 0.08 if hi > lo else 1.0
+        lims = (max(lo - pad, 0.0), hi + pad)
+
+        ax.plot(lims, lims, color="black", lw=1.0, zorder=1)
+        ax.plot(lims, [v * 1.2 for v in lims], color="black", lw=0.8, ls="--", alpha=0.7, zorder=1)
+        ax.plot(lims, [v * 0.8 for v in lims], color="black", lw=0.8, ls="--", alpha=0.7, zorder=1)
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+        ax.set_aspect("equal")
+        ax.set_xlabel(f"Observed RP{rp} wind speed (m s$^{{-1}}$)")
+        ax.set_ylabel(f"Model RP{rp} wind speed (m s$^{{-1}}$)")
+        ax.text(0.02, 0.97, f"({letter}) RP{rp}", transform=ax.transAxes, ha="left", va="top",
+                fontsize=12, fontweight="bold", zorder=11)
+        if text_lines:
+            # every product sits below 1:1, so the upper-left triangle is empty
+            ax.text(0.02, 0.90, "\n".join(text_lines), transform=ax.transAxes, ha="left", va="top",
+                    fontsize=8.5, family="monospace", zorder=11,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="0.6", alpha=0.85))
+        if j == 0:
+            # one figure-level legend below the panels keeps all three panels free for data
+            fig.legend(handles=_legend_handles(products_present, colors, labels), loc="outside lower center",
+                       ncol=len(products_present) + len(NETWORK_MARKERS), fontsize=10, frameon=False)
+
+    save_figure(fig, fig_name, outdir=w.FIG_DIR, purpose="report")
+    plt.close(fig)
+    return skill_rows
+
+
+def plot_scatter_and_skill(mode: str, station_rl: pd.DataFrame) -> list:
+    return _scatter_and_skill_figure(mode, station_rl, w.MAP_PRODUCTS, PRODUCT_COLORS, w.PRODUCT_LABEL,
+                                      fig_name=f"scatter_rl_{mode}")
+
+
+def plot_quantile_scatter(station_rl: pd.DataFrame) -> list:
+    """Matched-mode-only scatter of rtma / cnn_raw (P50) / cnn_q82 / cnn_q92
+    against their own matched obs values. A standalone figure: its skill numbers
+    duplicate rows already written by plot_scatter_and_skill/compute_skill_rows_only,
+    so its return value is for logging only and is not added to skill_station_rl.csv."""
+    return _scatter_and_skill_figure("matched", station_rl, QUANT_SCATTER_PRODUCTS, QUANT_COLORS, QUANT_LABELS,
+                                      fig_name="scatter_rl_matched_quantiles")
+
+
+# === TASK 10 STEP 3: BC-TAIL DIAGNOSTIC ===
+
+def _peak_fraction_block_core(block: np.ndarray, days: pd.DatetimeIndex, wy_lo: int, wy_hi: int,
+                               cnn_top_block: np.ndarray) -> np.ndarray:
+    """Per-cell fraction of cnn_raw full-window POT peaks above the BC fit-window
+    CNN max (cnn_top), i.e. peaks that land on the flat post-BC cap.
+
+    Mirrors windx_common.pot_fit's peak selection exactly: decluster with
+    max_peaks = k+1 (k = round(POT_LAMBDA * n_years)), sort descending, the
+    top k are the peaks -- but here we need the raw peak values, not the fit,
+    so this is implemented directly rather than through pot_fit.
+    """
+    n_days, nrow, ncol = block.shape
+    valid_dict = w.valid_water_years(days, block)
+    wy_of_day = w.water_year(days)
+    wys_sorted = sorted(y for y in valid_dict if wy_lo <= y <= wy_hi)
+
+    if wys_sorted:
+        valid_stack = np.stack([np.asarray(valid_dict[y], dtype=bool) for y in wys_sorted], axis=0)
+        wy_to_idx = {y: i for i, y in enumerate(wys_sorted)}
+        day_wy_idx = np.fromiter((wy_to_idx.get(y, -1) for y in wy_of_day), dtype=np.int64, count=n_days)
+        valid_mask = np.zeros((n_days, nrow, ncol), dtype=bool)
+        ok_days = day_wy_idx >= 0
+        if ok_days.any():
+            valid_mask[ok_days] = valid_stack[day_wy_idx[ok_days]]
+        n_years_grid = valid_stack.sum(axis=0).astype(np.float32)
+    else:
+        valid_mask = np.zeros((n_days, nrow, ncol), dtype=bool)
+        n_years_grid = np.zeros((nrow, ncol), dtype=np.float32)
+
+    masked = np.where(valid_mask, block, np.nan)
+    frac = np.full((nrow, ncol), np.nan, dtype=np.float32)
+
+    for r in range(nrow):
+        for c in range(ncol):
+            n_years_cell = int(n_years_grid[r, c])
+            if n_years_cell < w.MIN_YEARS:
+                continue
+            k = int(round(w.POT_LAMBDA * n_years_cell))
+            if k <= 0:
+                continue
+            cnn_top = float(cnn_top_block[r, c])
+            if not np.isfinite(cnn_top):
+                continue
+            series = pd.Series(masked[:, r, c].astype(np.float64), index=days)
+            series = series[np.isfinite(series.to_numpy(dtype=float))]
+            try:
+                peaks = rx.decluster_peaks(series, w.SEP_HOURS, max_peaks=k + 1)
+            except ValueError:
+                continue
+            peaks_desc = np.sort(peaks.to_numpy(dtype=float))[::-1]
+            if peaks_desc.size < k:
+                continue
+            top_k = peaks_desc[:k]
+            frac[r, c] = float(np.mean(w.bc_clamped(top_k, cnn_top)))
+    return frac
+
+
+def _peak_fraction_row_block(args) -> tuple:
+    (dmax_path_str, bc_map_path_str, y0, y1, wy_lo, wy_hi) = args
+    with netCDF4.Dataset(dmax_path_str) as ds:
+        day_units = ds.variables["day"].units
+        day_vals = ds.variables["day"][:]
+        block = ds.variables["dmax"][:, y0:y1, :]
+    days = s3f._decode_time_values(day_units, day_vals)
+    block = s3f._filled(block).astype(np.float32)
+    with netCDF4.Dataset(bc_map_path_str) as ds:
+        cnn_top_block = s3f._filled(ds.variables["cnn_q"][-1, y0:y1, :]).astype(np.float64)
+    frac = _peak_fraction_block_core(block, days, wy_lo, wy_hi, cnn_top_block)
+    return y0, y1, frac
+
+
+def _compute_peak_fraction_grid() -> np.ndarray:
+    dmax_path = w.CACHE_DIR / "dailymax_cnn_raw.nc"
+    with netCDF4.Dataset(dmax_path) as ds:
+        ny = ds.dimensions["y"].size
+        nx = ds.dimensions["x"].size
+    wy_lo, wy_hi = w.FULL_WY["cnn_raw"]
+
+    n_workers = min(s3f.N_WORKERS, ny)
+    chunk = math.ceil(ny / n_workers)
+    blocks = [(r0, min(r0 + chunk, ny)) for r0 in range(0, ny, chunk)]
+    args_list = [(str(dmax_path), str(w.BC_MAP), y0, y1, wy_lo, wy_hi) for (y0, y1) in blocks]
+
+    frac = np.full((ny, nx), np.nan, dtype=np.float32)
+    print(f"[bc_tail] computing peak-clamp fraction over {ny}x{nx} cells, {n_workers} workers", flush=True)
+    with cf.ProcessPoolExecutor(max_workers=n_workers) as ex:
+        for y0, y1, block_frac in ex.map(_peak_fraction_row_block, args_list):
+            frac[y0:y1, :] = block_frac
+    return frac
+
+
+def bc_tail_diagnostic(coast: list) -> None:
+    dmax_cnn = w.CACHE_DIR / "dailymax_cnn_raw.nc"
+    rl_cnn_raw = w.RESULT_DIR / "rl_map_cnn_raw_full.nc"
+    rl_cnn_bc = w.RESULT_DIR / "rl_map_cnn_bc_full.nc"
+    if not (dmax_cnn.exists() and rl_cnn_raw.exists() and rl_cnn_bc.exists() and w.BC_MAP.exists()):
+        print("skipping bc_tail_diagnostic: cnn outputs missing")
+        return
+
+    with netCDF4.Dataset(rl_cnn_raw) as ds:
+        x = np.asarray(ds.variables["x"][:], dtype=np.float64)
+        y = np.asarray(ds.variables["y"][:], dtype=np.float64)
+        rl100_raw = _filled(ds.variables["rl_100"][:, :])
+    with netCDF4.Dataset(rl_cnn_bc) as ds:
+        rl100_bc = _filled(ds.variables["rl_100"][:, :])
+    diff = rl100_bc - rl100_raw
+
+    frac = _compute_peak_fraction_grid()
+
+    with netCDF4.Dataset(w.BC_MAP) as ds:
+        rtma_top = _filled(ds.variables["rtma_q"][-1, :, :])
+
+    xe, ye = cell_edges(x), cell_edges(y)
+
+    apply_style()
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.2), constrained_layout=True)
+
+    vmin, vmax = diverging_limits(diff)
+    m0 = axes[0].pcolormesh(xe, ye, diff, cmap="RdBu_r", vmin=vmin, vmax=vmax, rasterized=True, zorder=2)
+    fig.colorbar(m0, ax=axes[0], shrink=0.9).set_label("RP100 CNN-BC $-$ CNN-raw (m s$^{-1}$)")
+
+    m1 = axes[1].pcolormesh(xe, ye, frac, cmap="viridis", vmin=0.0, vmax=1.0, rasterized=True, zorder=2)
+    fig.colorbar(m1, ax=axes[1], shrink=0.9).set_label("Fraction of POT peaks clamped")
+
+    m2 = axes[2].pcolormesh(xe, ye, rtma_top, cmap=cmocean.cm.speed, rasterized=True, zorder=2)
+    fig.colorbar(m2, ax=axes[2], shrink=0.9).set_label("RTMA fit-window cap (m s$^{-1}$)")
+
+    labels = ["(a) BC $-$ raw RP100", "(b) peaks clamped", "(c) RTMA cap"]
+    for ax, label in zip(axes, labels):
+        _draw_coastline(ax, coast)
+        ax.set_xlim(MAP_EXTENT[0], MAP_EXTENT[1])
+        ax.set_ylim(MAP_EXTENT[2], MAP_EXTENT[3])
+        ax.set_aspect("equal")
+        km_axes(ax)
+        ax.text(0.02, 0.97, label, transform=ax.transAxes, ha="left", va="top",
+                fontsize=12, fontweight="bold", zorder=11)
+    add_scalebar(axes[0], SCALEBAR_M)
+    add_north_arrow(axes[0])
+
+    save_figure(fig, "bc_tail_diagnostic", outdir=w.FIG_DIR, purpose="report")
+    plt.close(fig)
+
+    print(f"bc_tail_diagnostic: panel(a) BC-raw RP100 diff: median={np.nanmedian(diff):.2f} m/s, "
+          f"p95={np.nanpercentile(diff, 95):.2f} m/s")
+    print(f"bc_tail_diagnostic: panel(b) clamped-peak fraction: median={np.nanmedian(frac):.3f}, "
+          f"p95={np.nanpercentile(frac, 95):.3f}")
+
+
+# === MAIN ===
+
+def main() -> None:
+    w.FIG_DIR.mkdir(parents=True, exist_ok=True)
+    station_table = pd.read_csv(w.RESULT_DIR / "station_table.csv")
+    station_rl = pd.read_csv(w.RESULT_DIR / "station_rl.csv")
+    coast = w.read_ldb(w.LDB_FILE)
+
+    print("=== Task 9: maps ===")
+    for window in ("full", "common"):
+        for rp in w.RETURN_PERIODS:
+            path = plot_rp_maps(rp, window, station_table, station_rl, coast)
+            print(f"  wrote {path}")
+
+    print("\n=== Task 10 step 1-2: scatter + skill ===")
+    all_skill_rows = []
+    for mode in ("full", "matched"):
+        rows = plot_scatter_and_skill(mode, station_rl)
+        all_skill_rows.extend(rows)
+        print(f"  wrote {w.FIG_DIR / f'scatter_rl_{mode}.png'} ({len(rows)} skill rows)")
+
+        others = [p for p in w.ALL_PRODUCTS if p not in w.MAP_PRODUCTS]
+        extra_rows = compute_skill_rows_only(mode, station_rl, others)
+        all_skill_rows.extend(extra_rows)
+        print(f"  {mode}: +{len(extra_rows)} skill rows for {others}")
+
+    skill_df = pd.DataFrame(all_skill_rows, columns=["mode", "rp", "product", "n", "bias", "rmse", "mae",
+                                                      "sci", "skill", "r2", "median_ratio", "ci_overlap_frac"])
+    skill_path = w.RESULT_DIR / "skill_station_rl.csv"
+    skill_df.to_csv(skill_path, index=False)
+    print(f"  wrote {skill_path} ({len(skill_df)} rows)")
+
+    print("\n=== Quantile scatter (rtma / cnn_raw P50 / cnn_q82 / cnn_q92, matched) ===")
+    quant_rows = plot_quantile_scatter(station_rl)
+    print(f"  wrote {w.FIG_DIR / 'scatter_rl_matched_quantiles.png'} ({len(quant_rows)} skill rows, "
+          f"not added to skill_station_rl.csv -- duplicates rows above)")
+
+    print("\n=== Task 10 step 3: BC-tail diagnostic ===")
+    bc_tail_diagnostic(coast)
+
+    print("\ns4_figures: done")
+
+
+if __name__ == "__main__":
+    main()
