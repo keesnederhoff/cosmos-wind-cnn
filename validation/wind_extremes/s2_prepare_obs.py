@@ -22,7 +22,7 @@ import evt as rx
 import windx_common as w
 
 HOURLY_START = pd.Timestamp("1914-05-01 00:00:00")
-HOURLY_END = pd.Timestamp("2026-06-30 23:00:00")
+HOURLY_END = pd.Timestamp(year=w.OBS_MAX_WY, month=w.WY_START_MONTH, day=1) - pd.Timedelta(hours=1)   # last hour of OBS_MAX_WY (2026-09-30 23:00); a shorter axis would leave that WY under 80 % valid days
 HOURLY_AXIS = pd.date_range(HOURLY_START, HOURLY_END, freq="h")
 
 STAGE1_CACHES = {
@@ -395,6 +395,8 @@ def run_step7_only() -> None:
 
 def main():
     t0 = time.time()
+    w.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    w.RESULT_DIR.mkdir(parents=True, exist_ok=True)
     if ONLY_STEP7:
         print("ONLY_STEP7 = True: skipping Steps 1-6, reading cache/obs_hourly.nc")
         run_step7_only()

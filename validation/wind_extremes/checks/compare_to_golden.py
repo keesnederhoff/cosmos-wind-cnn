@@ -5,6 +5,11 @@ The s6 table lives under figures/ in the output root, so it is listed in FIGURE_
 with NEW.parent / "figures" / <name>. Prints one line per file (OK or DIFF with the largest
 relative error and where it is) and exits 1 on any DIFF. A file missing in NEW counts as a DIFF.
 Do not loosen RTOL: a difference means the vendored evt.py or the environment changed a number.
+
+The golden is the v3 run (v3 CNN files, ERA5/RTMA/obs to WY2025, products incl. cnn_bc/cnn_q82/cnn_q92). It is tied to
+commit 5e2edc8 (git tag wind-extremes-v3). From the v4 input change on, windx_common.py reads other files and a longer
+record, so this comparison no longer applies to a default run. To re-verify the engine, check out the tag, run s2-s6
+there into NEW, and run this script.
 """
 import sys
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""Stage 1: stream ERA5 / RTMA / CNN-raw / CNN-BC one water year at a time into
+"""Stage 1: stream ERA5 / RTMA / CNN-raw / CNN quantiles / CNN-BA one water year at a time into
 cached daily-maximum cubes and station hourly series.
 
 Resumable: a WY is skipped if its tmp npz already exists. Final NetCDFs are
@@ -7,7 +7,7 @@ written only once every WY of a product is present and SMOKE_WY is None.
 
 # === CONFIGURATION ===
 SMOKE_WY = None                 # int (e.g. 2010) to process a single WY and skip finalize, or None for production
-PRODUCTS_TO_RUN = ["era5", "rtma", "cnn_raw", "cnn_bc", "cnn_q82", "cnn_q92", "cnn_ba"]   # finished products are skipped
+PRODUCTS_TO_RUN = ["era5", "rtma", "cnn_raw", "cnn_q89", "cnn_q95", "cnn_ba"]   # finished products are skipped
 
 # === IMPORTS ===
 import re
@@ -55,6 +55,18 @@ def _to_ns_i8(idx: pd.DatetimeIndex) -> np.ndarray:
     return np.asarray(idx.values, dtype="datetime64[ns]").view(np.int64)
 
 
+def _quantile_index(ds: netCDF4.Dataset, tau: float) -> int:
+    """Index of the file's quantile level `tau`, selected by value (never by position).
+
+    Raises if no level lies within w.TAU_TOL of `tau`, so a different level set cannot be misread silently.
+    """
+    levels = np.asarray(ds.variables["quantile"][:], dtype=float)
+    i = int(np.argmin(np.abs(levels - tau)))
+    if abs(levels[i] - tau) > w.TAU_TOL:
+        raise ValueError(f"tau {tau} not on the quantile axis {levels.tolist()}")
+    return i
+
+
 def _station_cells(x1d: np.ndarray, y1d: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """nearest_cell for every station, on this product's grid. Computed once per product."""
     stations = w.station_locations()
@@ -70,7 +82,7 @@ def _grid_xy(product: str) -> tuple[np.ndarray, np.ndarray]:
     if product in w.CNN_FILE_BY_PRODUCT:
         path = w.CNN_FILE_BY_PRODUCT[product]
     else:
-        path = {"rtma": w.RTMA_WS, "era5": w.ERA5_U}[product]
+        path = {"rtma": w.RTMA_U, "era5": w.ERA5_U}[product]
     with netCDF4.Dataset(path) as ds:
         x1d = np.asarray(ds.variables["x"][:], dtype=float)
         y1d = np.asarray(ds.variables["y"][:], dtype=float)
@@ -95,9 +107,10 @@ def iter_product_wy(product: str, wy_list: list[int]):
     them across WYs. Hours absent from the source file are left NaN."""
     if product in w.CNN_FILE_BY_PRODUCT:
         path = w.CNN_FILE_BY_PRODUCT[product]
-        q_idx = w.CNN_Q_INDEX_BY_PRODUCT[product]
+        tau = w.CNN_TAU_BY_PRODUCT[product]
         ds = netCDF4.Dataset(path)
         try:
+            q_idx = None if tau is None else _quantile_index(ds, tau)
             x1d = np.asarray(ds.variables["x"][:], dtype=float)
             y1d = np.asarray(ds.variables["y"][:], dtype=float)
             H, epoch = _time_hours_int(ds)
@@ -108,7 +121,7 @@ def iter_product_wy(product: str, wy_list: list[int]):
                 i0 = int(np.searchsorted(H, target_h[0]))
                 i1 = int(np.searchsorted(H, target_h[-1], side="right"))
                 sub_h = H[i0:i1]
-                if q_idx is None:          # P50-only files (cnn_ba) have no quantile axis
+                if q_idx is None:          # P50-only files (cnn_raw, cnn_ba) have no quantile axis
                     raw = ds.variables["wind_speed"][i0:i1, :, :]
                 else:
                     raw = ds.variables["wind_speed"][i0:i1, q_idx, :, :]
@@ -119,11 +132,16 @@ def iter_product_wy(product: str, wy_list: list[int]):
             ds.close()
 
     elif product == "rtma":
-        ds = netCDF4.Dataset(w.RTMA_WS)
+        ds_u = netCDF4.Dataset(w.RTMA_U)
+        ds_v = netCDF4.Dataset(w.RTMA_V)
         try:
-            x1d = np.asarray(ds.variables["x"][:], dtype=float)
-            y1d = np.asarray(ds.variables["y"][:], dtype=float)
-            H, epoch = _time_hours_int(ds)
+            x1d = np.asarray(ds_u.variables["x"][:], dtype=float)
+            y1d = np.asarray(ds_u.variables["y"][:], dtype=float)
+            Hu, epoch_u = _time_hours_int(ds_u)
+            Hv, epoch_v = _time_hours_int(ds_v)
+            if epoch_u != epoch_v or not np.array_equal(Hu, Hv):
+                raise ValueError("RTMA U/V time axes differ")
+            H, epoch = Hu, epoch_u
             st_iy, st_ix, st_dist = _station_cells(x1d, y1d)
             for wy in wy_list:
                 times = _wy_hour_axis(wy)
@@ -131,12 +149,14 @@ def iter_product_wy(product: str, wy_list: list[int]):
                 i0 = int(np.searchsorted(H, target_h[0]))
                 i1 = int(np.searchsorted(H, target_h[-1], side="right"))
                 sub_h = H[i0:i1]
-                raw = ds.variables["wind_speed"][i0:i1, :, :]
-                raw = np.ma.filled(raw, np.nan).astype(np.float32)
+                u = np.ma.filled(ds_u.variables["eastward_wind"][i0:i1, :, :], np.nan)
+                v = np.ma.filled(ds_v.variables["northward_wind"][i0:i1, :, :], np.nan)
+                raw = np.hypot(u, v).astype(np.float32)
                 field = _place_on_axis(sub_h, target_h[0], len(times), raw)
                 yield wy, times, field, x1d, y1d, st_iy, st_ix, st_dist
         finally:
-            ds.close()
+            ds_u.close()
+            ds_v.close()
 
     elif product == "era5":
         ds_u = netCDF4.Dataset(w.ERA5_U)

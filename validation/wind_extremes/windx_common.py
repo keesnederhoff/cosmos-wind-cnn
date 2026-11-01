@@ -19,18 +19,24 @@ CACHE_DIR  = ROOT / "cache"
 RESULT_DIR = ROOT / "results"
 FIG_DIR    = ROOT / "figures"
 
-CNN_DIR    = CNN_ROOT / "sf_bay_rtma" / "results"
-CNN_RAW    = CNN_DIR / "CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_raw_19400101_20260810.nc"
-CNN_BC     = CNN_DIR / "CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_BC_19400101_20260810.nc"
-BC_MAP     = CNN_DIR / "BC_map_r1b_do010_s3_valfit.nc"
-CNN_Q_INDEX = 1                     # quantile axis index of tau = 0.5 (P50)
+# --- v4 inputs (CNN-RTMA v4_s3, record 1940-01-01 07:00 UTC .. 2026-10-01 13:00 UTC) ---
+CNN_DIR    = CNN_ROOT / "sf_bay_rtma" / "results" / "v1940_product"
+CNN_RAW    = CNN_DIR / "CNN_RTMA_s3_P50_uvs_raw_19400101_20261001.nc"             # P50 only: (time, y, x), no quantile axis
+CNN_BA     = CNN_DIR / "CNN_RTMA_s3_P50_uvs_BA_19400101_20261001.nc"              # P50 x factor map: (time, y, x)
+CNN_QUANT  = CNN_DIR / "CNN_RTMA_s3_speed_quantiles_raw_19400101_20261001.nc"     # (time, quantile, y, x), 8 native levels
+BA_FACTOR_MAP = CNN_DIR / "BA_factor_map_s3_E3q90.nc"
 
-ERA5_U     = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf" / "ERA5_eastward_wind_1940_2025_UTM.nc"
-ERA5_V     = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf" / "ERA5_northward_wind_1940_2025_UTM.nc"
-RTMA_WS    = MET_ROOT / "modeled_data" / "rtma" / "fm_netcdf" / "RTMA_SFbay_2p5km_wind_speed_2011_2026_UTM10.nc"
+ERA5_DIR   = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf"                    # identical copy also in sf_bay_rtma/raw_data
+ERA5_U     = ERA5_DIR / "ERA5_eastward_wind_1940_2026_UTM.nc"
+ERA5_V     = ERA5_DIR / "ERA5_northward_wind_1940_2026_UTM.nc"
+# RTMA speed = hypot(u, v) of the v4 raw_data components (earth-relative; the grid-relative pair gives the same speed to 4e-6 m/s).
+# The old fm_netcdf wind_speed file ends 2026-07-30 and is not used.
+RTMA_DIR   = CNN_ROOT / "sf_bay_rtma" / "raw_data"
+RTMA_U     = RTMA_DIR / "RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10_earthrel.nc"
+RTMA_V     = RTMA_DIR / "RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10_earthrel.nc"
 OBS_DIR    = MET_ROOT / "observed_data"
-IEM_FILE   = OBS_DIR / "pws_sfbay_waterfront_iem.nc"
-NDBC_FILE  = OBS_DIR / "pws_sfbay_waterfront_ndbc.nc"
+IEM_FILE   = OBS_DIR / "pws_sfbay_waterfront_iem_to20261001.nc"
+NDBC_FILE  = OBS_DIR / "pws_sfbay_waterfront_ndbc_to20261001.nc"
 USGS_FILES = {                      # id: (file, lat, lon, anemometer height m)
     "WT_MW101":  (OBS_DIR / "DMP23MW101met.nc", 37.576294, -122.208054, 1.2),
     "WT_MW201":  (OBS_DIR / "DMP23MW201met.nc", 37.576397, -122.208038, 1.2),
@@ -39,36 +45,29 @@ USGS_FILES = {                      # id: (file, lat, lon, anemometer height m)
 }
 LDB_FILE   = MET_ROOT / "reference" / "deltabay.ldb"   # coastline, UTM10 metres
 
-PRODUCTS   = ["era5", "rtma", "cnn_raw", "cnn_bc"]     # fixed order everywhere
-PRODUCT_LABEL = {"era5": "ERA5", "rtma": "RTMA", "cnn_raw": "CNN-RTMA raw", "cnn_bc": "CNN-RTMA BC"}
+PRODUCTS   = ["era5", "rtma", "cnn_raw"]     # fixed order everywhere
+PRODUCT_LABEL = {"era5": "ERA5", "rtma": "RTMA", "cnn_raw": "CNN-RTMA v4 raw"}
 
-# Extra CNN predictive-distribution quantiles (raw file only), added after the
-# original 4-product comparison. Kept out of PRODUCTS so the six 1x4 maps and
-# the 4-product scatters are unaffected; appended in ALL_PRODUCTS for the
-# station skill table and the new 3-quantile scatter.
-EXTRA_PRODUCTS = ["cnn_q82", "cnn_q92", "cnn_ba"]
+# Extra CNN products added after the original comparison. cnn_q89/cnn_q95 are single native levels of the
+# v4 quantile head (tau 0.8922 and 0.9510), not interpolated, so the names carry the rounded tau.
+# Appended in ALL_PRODUCTS for the station skill table and the quantile scatter.
+EXTRA_PRODUCTS = ["cnn_q89", "cnn_q95", "cnn_ba"]
 ALL_PRODUCTS   = PRODUCTS + EXTRA_PRODUCTS
-PRODUCT_LABEL.update({"cnn_q82": "CNN-RTMA τ0.82", "cnn_q92": "CNN-RTMA τ0.92", "cnn_ba": "CNN-RTMA BA"})
-
-# USGS observation-anchored BA product (2026-10-02): P50 x one factor per cell (obs/CNN at hourly P90,
-# 39 stations, 2020-2026). The file has no quantile axis (index None). The RP maps show it in panel (d)
-# in place of the clamped quantile-map BC.
-CNN_BA_DIR    = CNN_ROOT / "cnn_fullrecord"
-CNN_BA        = CNN_BA_DIR / "CNN_RTMA_v3_r1b_do010_s3_P50_uvs_BA_19400101_20260810.nc"
-BA_FACTOR_MAP = CNN_BA_DIR / "BA_factor_map_r1b_do010_s3_E3q90.nc"
+PRODUCT_LABEL.update({"cnn_q89": "CNN-RTMA v4 τ0.89", "cnn_q95": "CNN-RTMA v4 τ0.95", "cnn_ba": "CNN-RTMA v4 BA"})
 MAP_PRODUCTS  = ["era5", "rtma", "cnn_raw", "cnn_ba"]   # panel order of the 1x4 RP maps and main scatters
 
-# Quantile-axis index into each product's CNN source file. cnn_raw/cnn_bc keep
-# their original CNN_Q_INDEX (P50); cnn_q82/cnn_q92 read other quantiles, both
-# from CNN_RAW (quantile axis = [0.1316, 0.5, 0.8158, 0.9211, 0.9737]).
-CNN_Q_INDEX_BY_PRODUCT = {"cnn_raw": CNN_Q_INDEX, "cnn_bc": CNN_Q_INDEX, "cnn_q82": 2, "cnn_q92": 3, "cnn_ba": None}
-CNN_FILE_BY_PRODUCT    = {"cnn_raw": CNN_RAW, "cnn_bc": CNN_BC, "cnn_q82": CNN_RAW, "cnn_q92": CNN_RAW, "cnn_ba": CNN_BA}
+# BA = P50 x one constant factor per cell (obs/CNN at hourly P90, BA_FACTOR_MAP), so BA return levels equal F x raw.
+# Source file and quantile level per CNN product. tau None = file without a quantile axis. A tau is selected by
+# value on the file's quantile axis (s1_extract_products._quantile_index), never by position.
+CNN_FILE_BY_PRODUCT = {"cnn_raw": CNN_RAW, "cnn_q89": CNN_QUANT, "cnn_q95": CNN_QUANT, "cnn_ba": CNN_BA}
+CNN_TAU_BY_PRODUCT  = {"cnn_raw": None, "cnn_q89": 0.89215686, "cnn_q95": 0.95098039, "cnn_ba": None}
+TAU_TOL             = 1e-6          # a requested tau must match a file level within this
 
 WY_START_MONTH   = 10
-FULL_WY          = {"era5": (1941, 2025), "rtma": (2012, 2025), "cnn_raw": (1941, 2025), "cnn_bc": (1941, 2025)}
-FULL_WY.update({"cnn_q82": (1941, 2025), "cnn_q92": (1941, 2025), "cnn_ba": (1941, 2025)})
-COMMON_WY        = (2012, 2025)
-OBS_MAX_WY       = 2025
+FULL_WY          = {"era5": (1941, 2026), "rtma": (2012, 2026), "cnn_raw": (1941, 2026)}
+FULL_WY.update({"cnn_q89": (1941, 2026), "cnn_q95": (1941, 2026), "cnn_ba": (1941, 2026)})
+COMMON_WY        = (2012, 2026)
+OBS_MAX_WY       = 2026
 MIN_HOURS_PER_DAY = 12              # valid hours for a valid day
 MIN_DAY_FRAC_WY   = 0.80            # valid-day fraction for a valid water year
 MIN_YEARS        = 6                # below this: status dropped_<6yr, no fit
@@ -309,11 +308,6 @@ def hourly_mean_centred(times: pd.DatetimeIndex, values: np.ndarray) -> pd.Serie
     hour_bin = (times + pd.Timedelta(minutes=30)).floor("h")
     s = pd.Series(np.asarray(values, dtype=float), index=hour_bin)
     return s.groupby(level=0).mean().sort_index()
-
-
-def bc_clamped(raw: np.ndarray, cnn_top: float) -> np.ndarray:
-    """True where a raw CNN value sits above the bias-correction fit-window max."""
-    return np.asarray(raw, dtype=float) > cnn_top
 
 
 def _decode_station_ids(raw) -> list[str]:

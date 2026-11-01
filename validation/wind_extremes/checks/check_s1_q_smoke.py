@@ -1,7 +1,7 @@
-"""Stage 1 smoke gate for cnn_q82 / cnn_q92 (Task: extra CNN quantile products).
+"""Stage 1 smoke gate for cnn_q89 / cnn_q95 (extra CNN quantile products, v4 quantile file).
 
 Mirrors check_s1_smoke.py: verify the WY2010 npz for each new product against a
-direct read of CNN_RAW at that product's quantile index. Both checks must
+direct read of CNN_QUANT at that product's quantile level (selected by value). Both checks must
 print max|diff| = 0.000, or Stage 1 is wrong and must be debugged before the
 production run.
 """
@@ -17,15 +17,18 @@ import windx_common as w
 
 
 def check_station_series(product: str) -> float:
-    """OAK cached hourly series for 2010-01-10..2010-01-24 vs a direct CNN_RAW read
-    at this product's quantile index."""
-    q_idx = w.CNN_Q_INDEX_BY_PRODUCT[product]
+    """OAK cached hourly series for 2010-01-10..2010-01-24 vs a direct CNN_QUANT read
+    at this product's quantile level."""
+    tau = w.CNN_TAU_BY_PRODUCT[product]
     npz_path = w.CACHE_DIR / f"tmp_{product}" / "WY2010.npz"
 
     stations = w.station_locations()
     row = stations.loc[stations["station_id"] == "OAK"].iloc[0]
 
-    with netCDF4.Dataset(w.CNN_RAW) as ds:
+    with netCDF4.Dataset(w.CNN_QUANT) as ds:
+        levels = np.asarray(ds.variables["quantile"][:], dtype=float)
+        q_idx = int(np.argmin(np.abs(levels - tau)))
+        assert abs(levels[q_idx] - tau) <= w.TAU_TOL, f"tau {tau} not on {levels}"
         x1d = np.asarray(ds.variables["x"][:], dtype=float)
         y1d = np.asarray(ds.variables["y"][:], dtype=float)
         iy, ix, dist = w.nearest_cell(x1d, y1d, row.x, row.y)
@@ -63,7 +66,7 @@ def check_station_series(product: str) -> float:
 
 if __name__ == "__main__":
     results = {}
-    for product in ["cnn_q82", "cnn_q92"]:
+    for product in ["cnn_q89", "cnn_q95"]:
         results[product] = check_station_series(product)
     print("GATE RESULT: " + "  ".join(f"{p} max|diff|={d:.3f}" for p, d in results.items()))
     if all(d == 0.0 for d in results.values()):

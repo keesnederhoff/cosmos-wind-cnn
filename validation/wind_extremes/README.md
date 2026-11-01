@@ -4,6 +4,8 @@ The 1-, 10- and 100-year 10 m wind speed for ERA5, the RTMA analysis, CNN-RTMA v
 
 Plan: `validation/plans/2026-10-02-wind-return-levels.md`. Built 2026-10-02. Moved into the repo with `validation/plans/2026-10-03-wind-extremes-to-repo.md`.
 
+**v4 inputs (2026-11-01).** `windx_common.py` now points at CNN-RTMA v4 (`sf_bay_rtma\results\v1940_product`), ERA5 and RTMA through WY2026 and the refreshed IEM/NDBC files; the statistics are unchanged. CNN-BC and its tail diagnostic are removed (rejected), and `cnn_q82`/`cnn_q92` are now `cnn_q89`/`cnn_q95` (native tau 0.8922 and 0.9510). The Results sections below are the v3 results (WY1941-2025) and stay as the record of that run until the v4 results replace them.
+
 ## Environment
 
 Runs in the `cosmos_wind_cnn` conda env, which has no `cmocean` and no `rainlib`. The return-level code those need is in `evt.py`. Paths come from three environment variables, set before any stage runs (`windx_common.py` raises with the set-command if one is missing):
@@ -32,13 +34,13 @@ From this folder, in order:
 python s1_extract_products.py   # 220 GB CNN files -> daily-max cubes + station series (hours; resumable)
 python s2_prepare_obs.py        # obs QC, hourly means, station table, top-peak review table (~35 s)
 python s3_fit_return_levels.py  # POT/GPD on grids (full + common) and stations (full + matched) (~15 min from cached grids)
-python s4_figures.py            # 6 maps, 2 scatters, skill table, BC-tail diagnostic (~3 min)
+python s4_figures.py            # 6 maps, 2 scatters, skill table (~3 min)
 python s5_obs_correction.py     # observation-anchored correction of the CNN raw maps
 python s6_station_eva.py        # per-station return-level plots, obs vs every flavour
 python -m pytest tests -q       # unit tests of the helpers
 ```
 
-s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It needs the 127 GB CNN files and takes hours. s2 to s6 take about 25 min together. `checks\compare_to_golden.py` compares a fresh run with a saved snapshot of results (rtol 1e-9).
+s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It needs the 127 GB CNN files and takes hours. s2 to s6 take about 25 min together. `checks\compare_to_golden.py` compares a fresh run with the saved v3 snapshot of results (rtol 1e-9). That snapshot is tied to the v3 inputs and to commit `5e2edc8` (tag `wind-extremes-v3`): from the v4 input change on, a run reads different files and a different record, so the comparison no longer applies to the default configuration. To re-verify the engine against the golden, check out that tag and run s2-s6 with the v3 inputs.
 
 `windx_common.py` holds every path and parameter in its CONFIGURATION block.
 - `s1` skips water years already in `cache\tmp_<product>\`.
@@ -49,11 +51,12 @@ s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It needs t
 
 | Source | File | Notes |
 |---|---|---|
-| CNN-RTMA v3 raw / BC | `sf_bay_rtma\results\CNN_RTMA_v3_r1b_do010_s3_speed_quantiles_{raw,BC}_19400101_20260810.nc` | P50 only (quantile index 1) |
-| BC map | `sf_bay_rtma\results\BC_map_r1b_do010_s3_valfit.nc` | used only for the clamp diagnostic |
-| ERA5 | `modeled_data\era5\fm_netcdf\ERA5_{eastward,northward}_wind_1940_2025_UTM.nc` (under `COSMOS_VALIDATION_DATA_ROOT`) | 25 km |
-| RTMA | `...\modeled_data\rtma\fm_netcdf\RTMA_SFbay_2p5km_wind_speed_2011_2026_UTM10.nc` | 2.5 km |
-| Obs | `...\observed_data\pws_sfbay_waterfront_{iem,ndbc}.nc`, 4 USGS mooring files | CWOP not used (file fails to open) |
+| CNN-RTMA v4 raw / BA (P50) | `sf_bay_rtma\results\v1940_product\CNN_RTMA_s3_P50_uvs_{raw,BA}_19400101_20261001.nc` | variable `wind_speed`, (time, y, x), no quantile axis; time starts 1940-01-01 07:00 UTC |
+| CNN-RTMA v4 quantiles | `...\v1940_product\CNN_RTMA_s3_speed_quantiles_raw_19400101_20261001.nc` | (time, quantile, y, x); tau selected by value: 0.8922 (`cnn_q89`) and 0.9510 (`cnn_q95`), no interpolation |
+| BA factor map | `...\v1940_product\BA_factor_map_s3_E3q90.nc` | constant factor per cell; BA return levels = F x raw |
+| ERA5 | `modeled_data\era5\fm_netcdf\ERA5_{eastward,northward}_wind_1940_2026_UTM.nc` (under `COSMOS_VALIDATION_DATA_ROOT`) | 25 km; real data to 2026-10-01 13:00 UTC |
+| RTMA | `sf_bay_rtma\raw_data\RTMA_SFbay_2p5km_{eastward,northward}_wind_2011_2026_UTM10_earthrel.nc` (under `COSMOS_WINDX_CNN_ROOT`) | 2.5 km; speed = hypot(u, v); record to 2026-10-04 18:00 UTC with gaps |
+| Obs | `...\observed_data\pws_sfbay_waterfront_{iem,ndbc}_to20261001.nc`, 4 USGS mooring files | CWOP not used (file fails to open) |
 
 ## Method (decisions agreed 2026-10-02)
 
@@ -87,7 +90,7 @@ The persistence test removes the IEM values sitting at exactly 20.00 and 25.00 m
 - `results\station_table.csv`, `qc_top_peaks.csv`, `homogeneity.csv`.
 - `figures\map_rl{1,10,100}_{full,common}.png`: 1 × 4 panels with obs circles in the same colour scale.
 - `figures\scatter_rl_{full,matched}.png`: 1 × 3 panels (RP1/10/100) with 90 % CI whiskers, the 1:1 line and ±20 %. In matched mode each product's point uses its own matched obs value, so x differs slightly between products.
-- `figures\bc_tail_diagnostic.png`: three panels: (a) BC − raw RP100, (b) fraction of POT peaks above the BC fit range, (c) the RTMA cap.
+- v3 only: `figures\bc_tail_diagnostic.png` (BC − raw RP100, fraction of peaks on the BC clamp, the RTMA cap). Removed in v4 with the BC product.
 
 ### Deviations from the plan
 

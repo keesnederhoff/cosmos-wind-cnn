@@ -5,22 +5,19 @@ Task 9 (maps): one PNG per return period (1, 10, 100) x window (full, common),
 fixed -- a product whose results/rl_map_<product>_<window>.nc does not exist
 yet gets a blank panel with "not yet available" instead of reflowing the grid.
 
-Task 10 (scatter + skill + BC-tail diagnostic):
-  - Step 1/2: station scatter (1x3, one per RP) for mode in (full, matched),
-    with a skill text box per product and results/skill_station_rl.csv.
-  - Step 3: figures/bc_tail_diagnostic.png, skipped with a message while the
-    CNN caches/maps are not yet available.
+Task 10 (scatter + skill):
+  - Station scatter (1x3, one per RP) for mode in (full, matched), with a skill
+    text box per product and results/skill_station_rl.csv.
+  (The v3 BC-tail diagnostic was removed for v4: CNN-BC is rejected. The v3 figure is archived.)
 
 Run order: after s3_fit_return_levels.py. Resumable in the trivial sense that
 it only reads what exists; nothing here is slow enough to need checkpointing.
 """
 
 # === CONFIGURATION ===
-PRODUCT_COLORS = {"era5": "#7f7f7f", "rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_bc": "#000000",
-                  "cnn_ba": "#2ca02c"}
+PRODUCT_COLORS = {"era5": "#7f7f7f", "rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_ba": "#2ca02c"}
 NETWORK_MARKERS = {"IEM": "o", "NDBC": "s"}
 MAP_EXTENT = (316250.0, 723750.0, 4013250.0, 4323250.0)   # xmin, xmax, ymin, ymax (m, UTM10)
-SCALEBAR_M = 50000.0
 # RP maps zoom on the stations (station x 510-621 km, y 4132-4271 km, plus ~12 km margin)
 ZOOM_EXTENT = (498000.0, 634000.0, 4108000.0, 4283000.0)
 ZOOM_SCALEBAR_M = 20000.0
@@ -29,15 +26,13 @@ MAP_VLIM = (5.0, 30.0)               # m/s, one fixed colour range for every RP 
 MAP_LEVEL_STEP = 1.0                 # m/s, discrete colour bins on the RP maps
 MIN_SKILL_N = 5
 
-# Extra CNN-quantile scatter (Task: cnn_q82/cnn_q92). Kept separate from
+# Extra CNN-quantile scatter (cnn_q89/cnn_q95). Kept separate from
 # PRODUCT_COLORS/PRODUCTS so the original 4-product maps and scatters never
 # reflow; this is a standalone 1x3 figure of its own.
-QUANT_SCATTER_PRODUCTS = ["rtma", "cnn_raw", "cnn_q82", "cnn_q92"]
-QUANT_COLORS = {"rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_q82": "#d62728", "cnn_q92": "#9467bd"}
+QUANT_SCATTER_PRODUCTS = ["rtma", "cnn_raw", "cnn_q89", "cnn_q95"]
+QUANT_COLORS = {"rtma": "#1f77b4", "cnn_raw": "#ff7f0e", "cnn_q89": "#d62728", "cnn_q95": "#9467bd"}
 
 # === IMPORTS ===
-import concurrent.futures as cf
-import math
 from pathlib import Path
 
 import matplotlib as mpl
@@ -46,20 +41,11 @@ from matplotlib.lines import Line2D
 import netCDF4
 import numpy as np
 import pandas as pd
-import evt as rx
 
 import windx_common as w
 import s3_fit_return_levels as s3f   # side-effect-free import: reuse its CF-time decoder / mask filler
-from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, diverging_limits, save_figure
+from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, save_figure
 from skill_utils import compute_skill_scores
-
-# cmocean is optional (not in the cosmos_wind_cnn env). Only the BC-tail diagnostic panel (c) uses it;
-# YlGnBu is the closest matplotlib sequential map to cmo.speed.
-try:
-    import cmocean
-    SPEED_CMAP = cmocean.cm.speed
-except ImportError:
-    SPEED_CMAP = "YlGnBu"
 
 # cnn_raw is labelled "P50" in the quantile figure's legend/text box, to make
 # clear it is one predictive-distribution quantile among the three plotted.
@@ -105,7 +91,7 @@ def _finish_map_panel(ax, letter: str, title: str, window: str, extent=MAP_EXTEN
             fontsize=12, fontweight="bold", zorder=11, color="black",
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.75))
     if window == "common":
-        ax.text(0.98, 0.97, "WY2012–2025", transform=ax.transAxes, ha="right", va="top",
+        ax.text(0.98, 0.97, f"WY{w.COMMON_WY[0]}–{w.COMMON_WY[1]}", transform=ax.transAxes, ha="right", va="top",
                 fontsize=10, zorder=11)
 
 
@@ -263,7 +249,7 @@ def _skill_row_from_df(mode: str, rp: int, product: str, df: pd.DataFrame) -> "d
 
 def compute_skill_rows_only(mode: str, station_rl: pd.DataFrame, products: list) -> list:
     """Skill rows for `products` at every RP, mode, with no plotting. Used to add
-    EXTRA_PRODUCTS (cnn_q82, cnn_q92) to skill_station_rl.csv without touching
+    EXTRA_PRODUCTS (cnn_q89, cnn_q95) to skill_station_rl.csv without touching
     the original 4-PRODUCT scatter figures."""
     rows = []
     for rp in w.RETURN_PERIODS:
@@ -282,7 +268,7 @@ def _scatter_and_skill_figure(mode: str, station_rl: pd.DataFrame, products: lis
     """1x3 (RP1/10/100) scatter of obs vs model RL for `products`, with a skill
     text box per product (upper left) and a figure-level legend below. Shared by
     plot_scatter_and_skill (the original 4-PRODUCT figures) and
-    plot_quantile_scatter (the new rtma/cnn_raw/cnn_q82/cnn_q92 figure)."""
+    plot_quantile_scatter (the rtma/cnn_raw/cnn_q89/cnn_q95 figure)."""
     apply_style()
     fig, axes = plt.subplots(1, 3, figsize=(15, 6.0), constrained_layout=True)
     skill_rows = []
@@ -365,161 +351,12 @@ def plot_scatter_and_skill(mode: str, station_rl: pd.DataFrame) -> list:
 
 
 def plot_quantile_scatter(station_rl: pd.DataFrame) -> list:
-    """Matched-mode-only scatter of rtma / cnn_raw (P50) / cnn_q82 / cnn_q92
+    """Matched-mode-only scatter of rtma / cnn_raw (P50) / cnn_q89 / cnn_q95
     against their own matched obs values. A standalone figure: its skill numbers
     duplicate rows already written by plot_scatter_and_skill/compute_skill_rows_only,
     so its return value is for logging only and is not added to skill_station_rl.csv."""
     return _scatter_and_skill_figure("matched", station_rl, QUANT_SCATTER_PRODUCTS, QUANT_COLORS, QUANT_LABELS,
                                       fig_name="scatter_rl_matched_quantiles")
-
-
-# === TASK 10 STEP 3: BC-TAIL DIAGNOSTIC ===
-
-def _peak_fraction_block_core(block: np.ndarray, days: pd.DatetimeIndex, wy_lo: int, wy_hi: int,
-                               cnn_top_block: np.ndarray) -> np.ndarray:
-    """Per-cell fraction of cnn_raw full-window POT peaks above the BC fit-window
-    CNN max (cnn_top), i.e. peaks that land on the flat post-BC cap.
-
-    Mirrors windx_common.pot_fit's peak selection exactly: decluster with
-    max_peaks = k+1 (k = round(POT_LAMBDA * n_years)), sort descending, the
-    top k are the peaks -- but here we need the raw peak values, not the fit,
-    so this is implemented directly rather than through pot_fit.
-    """
-    n_days, nrow, ncol = block.shape
-    valid_dict = w.valid_water_years(days, block)
-    wy_of_day = w.water_year(days)
-    wys_sorted = sorted(y for y in valid_dict if wy_lo <= y <= wy_hi)
-
-    if wys_sorted:
-        valid_stack = np.stack([np.asarray(valid_dict[y], dtype=bool) for y in wys_sorted], axis=0)
-        wy_to_idx = {y: i for i, y in enumerate(wys_sorted)}
-        day_wy_idx = np.fromiter((wy_to_idx.get(y, -1) for y in wy_of_day), dtype=np.int64, count=n_days)
-        valid_mask = np.zeros((n_days, nrow, ncol), dtype=bool)
-        ok_days = day_wy_idx >= 0
-        if ok_days.any():
-            valid_mask[ok_days] = valid_stack[day_wy_idx[ok_days]]
-        n_years_grid = valid_stack.sum(axis=0).astype(np.float32)
-    else:
-        valid_mask = np.zeros((n_days, nrow, ncol), dtype=bool)
-        n_years_grid = np.zeros((nrow, ncol), dtype=np.float32)
-
-    masked = np.where(valid_mask, block, np.nan)
-    frac = np.full((nrow, ncol), np.nan, dtype=np.float32)
-
-    for r in range(nrow):
-        for c in range(ncol):
-            n_years_cell = int(n_years_grid[r, c])
-            if n_years_cell < w.MIN_YEARS:
-                continue
-            k = int(round(w.POT_LAMBDA * n_years_cell))
-            if k <= 0:
-                continue
-            cnn_top = float(cnn_top_block[r, c])
-            if not np.isfinite(cnn_top):
-                continue
-            series = pd.Series(masked[:, r, c].astype(np.float64), index=days)
-            series = series[np.isfinite(series.to_numpy(dtype=float))]
-            try:
-                peaks = rx.decluster_peaks(series, w.SEP_HOURS, max_peaks=k + 1)
-            except ValueError:
-                continue
-            peaks_desc = np.sort(peaks.to_numpy(dtype=float))[::-1]
-            if peaks_desc.size < k:
-                continue
-            top_k = peaks_desc[:k]
-            frac[r, c] = float(np.mean(w.bc_clamped(top_k, cnn_top)))
-    return frac
-
-
-def _peak_fraction_row_block(args) -> tuple:
-    (dmax_path_str, bc_map_path_str, y0, y1, wy_lo, wy_hi) = args
-    with netCDF4.Dataset(dmax_path_str) as ds:
-        day_units = ds.variables["day"].units
-        day_vals = ds.variables["day"][:]
-        block = ds.variables["dmax"][:, y0:y1, :]
-    days = s3f._decode_time_values(day_units, day_vals)
-    block = s3f._filled(block).astype(np.float32)
-    with netCDF4.Dataset(bc_map_path_str) as ds:
-        cnn_top_block = s3f._filled(ds.variables["cnn_q"][-1, y0:y1, :]).astype(np.float64)
-    frac = _peak_fraction_block_core(block, days, wy_lo, wy_hi, cnn_top_block)
-    return y0, y1, frac
-
-
-def _compute_peak_fraction_grid() -> np.ndarray:
-    dmax_path = w.CACHE_DIR / "dailymax_cnn_raw.nc"
-    with netCDF4.Dataset(dmax_path) as ds:
-        ny = ds.dimensions["y"].size
-        nx = ds.dimensions["x"].size
-    wy_lo, wy_hi = w.FULL_WY["cnn_raw"]
-
-    n_workers = min(s3f.N_WORKERS, ny)
-    chunk = math.ceil(ny / n_workers)
-    blocks = [(r0, min(r0 + chunk, ny)) for r0 in range(0, ny, chunk)]
-    args_list = [(str(dmax_path), str(w.BC_MAP), y0, y1, wy_lo, wy_hi) for (y0, y1) in blocks]
-
-    frac = np.full((ny, nx), np.nan, dtype=np.float32)
-    print(f"[bc_tail] computing peak-clamp fraction over {ny}x{nx} cells, {n_workers} workers", flush=True)
-    with cf.ProcessPoolExecutor(max_workers=n_workers) as ex:
-        for y0, y1, block_frac in ex.map(_peak_fraction_row_block, args_list):
-            frac[y0:y1, :] = block_frac
-    return frac
-
-
-def bc_tail_diagnostic(coast: list) -> None:
-    dmax_cnn = w.CACHE_DIR / "dailymax_cnn_raw.nc"
-    rl_cnn_raw = w.RESULT_DIR / "rl_map_cnn_raw_full.nc"
-    rl_cnn_bc = w.RESULT_DIR / "rl_map_cnn_bc_full.nc"
-    if not (dmax_cnn.exists() and rl_cnn_raw.exists() and rl_cnn_bc.exists() and w.BC_MAP.exists()):
-        print("skipping bc_tail_diagnostic: cnn outputs missing")
-        return
-
-    with netCDF4.Dataset(rl_cnn_raw) as ds:
-        x = np.asarray(ds.variables["x"][:], dtype=np.float64)
-        y = np.asarray(ds.variables["y"][:], dtype=np.float64)
-        rl100_raw = _filled(ds.variables["rl_100"][:, :])
-    with netCDF4.Dataset(rl_cnn_bc) as ds:
-        rl100_bc = _filled(ds.variables["rl_100"][:, :])
-    diff = rl100_bc - rl100_raw
-
-    frac = _compute_peak_fraction_grid()
-
-    with netCDF4.Dataset(w.BC_MAP) as ds:
-        rtma_top = _filled(ds.variables["rtma_q"][-1, :, :])
-
-    xe, ye = cell_edges(x), cell_edges(y)
-
-    apply_style()
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5.2), constrained_layout=True)
-
-    vmin, vmax = diverging_limits(diff)
-    m0 = axes[0].pcolormesh(xe, ye, diff, cmap="RdBu_r", vmin=vmin, vmax=vmax, rasterized=True, zorder=2)
-    fig.colorbar(m0, ax=axes[0], shrink=0.9).set_label("RP100 CNN-BC $-$ CNN-raw (m s$^{-1}$)")
-
-    m1 = axes[1].pcolormesh(xe, ye, frac, cmap="viridis", vmin=0.0, vmax=1.0, rasterized=True, zorder=2)
-    fig.colorbar(m1, ax=axes[1], shrink=0.9).set_label("Fraction of POT peaks clamped")
-
-    m2 = axes[2].pcolormesh(xe, ye, rtma_top, cmap=SPEED_CMAP, rasterized=True, zorder=2)
-    fig.colorbar(m2, ax=axes[2], shrink=0.9).set_label("RTMA fit-window cap (m s$^{-1}$)")
-
-    labels = ["(a) BC $-$ raw RP100", "(b) peaks clamped", "(c) RTMA cap"]
-    for ax, label in zip(axes, labels):
-        _draw_coastline(ax, coast)
-        ax.set_xlim(MAP_EXTENT[0], MAP_EXTENT[1])
-        ax.set_ylim(MAP_EXTENT[2], MAP_EXTENT[3])
-        ax.set_aspect("equal")
-        km_axes(ax)
-        ax.text(0.02, 0.97, label, transform=ax.transAxes, ha="left", va="top",
-                fontsize=12, fontweight="bold", zorder=11)
-    add_scalebar(axes[0], SCALEBAR_M)
-    add_north_arrow(axes[0])
-
-    save_figure(fig, "bc_tail_diagnostic", outdir=w.FIG_DIR, purpose="report")
-    plt.close(fig)
-
-    print(f"bc_tail_diagnostic: panel(a) BC-raw RP100 diff: median={np.nanmedian(diff):.2f} m/s, "
-          f"p95={np.nanpercentile(diff, 95):.2f} m/s")
-    print(f"bc_tail_diagnostic: panel(b) clamped-peak fraction: median={np.nanmedian(frac):.3f}, "
-          f"p95={np.nanpercentile(frac, 95):.3f}")
 
 
 # === MAIN ===
@@ -554,13 +391,10 @@ def main() -> None:
     skill_df.to_csv(skill_path, index=False)
     print(f"  wrote {skill_path} ({len(skill_df)} rows)")
 
-    print("\n=== Quantile scatter (rtma / cnn_raw P50 / cnn_q82 / cnn_q92, matched) ===")
+    print("\n=== Quantile scatter (rtma / cnn_raw P50 / cnn_q89 / cnn_q95, matched) ===")
     quant_rows = plot_quantile_scatter(station_rl)
     print(f"  wrote {w.FIG_DIR / 'scatter_rl_matched_quantiles.png'} ({len(quant_rows)} skill rows, "
           f"not added to skill_station_rl.csv -- duplicates rows above)")
-
-    print("\n=== Task 10 step 3: BC-tail diagnostic ===")
-    bc_tail_diagnostic(coast)
 
     print("\ns4_figures: done")
 

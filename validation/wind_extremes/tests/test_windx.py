@@ -197,11 +197,3 @@ def test_hourly_mean_centred():
     assert s.loc[t1] == pytest.approx(1.5)   # mean of the 00:53 and 01:05 readings
     assert s.loc[t2] == pytest.approx(3.0)
 
-
-# --- test 10: bc_clamped ---
-
-def test_bc_clamped():
-    raw = np.array([5.0, 10.0, 15.0, 20.0])
-    cnn_top = 12.0
-    out = w.bc_clamped(raw, cnn_top)
-    np.testing.assert_array_equal(out, np.array([False, False, True, True]))

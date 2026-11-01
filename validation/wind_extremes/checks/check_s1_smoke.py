@@ -1,5 +1,5 @@
 """Stage 1 smoke gate (Task 4, Step 5): verify the cnn_raw WY2010 npz against a
-direct read of CNN_RAW. Both checks must print max|diff| = 0.000, or Stage 1 is
+direct read of CNN_RAW (v4 P50 file, no quantile axis). Both checks must print max|diff| = 0.000, or Stage 1 is
 wrong and must be debugged before the production run."""
 
 import netCDF4
@@ -31,7 +31,7 @@ def check_station_series() -> float:
         time_var = np.asarray(ds.variables["time"][:], dtype=np.int64)
         i0 = int(np.searchsorted(time_var, t0))
         i1 = int(np.searchsorted(time_var, t1, side="right"))
-        direct = ds.variables["wind_speed"][i0:i1, w.CNN_Q_INDEX, iy, ix]
+        direct = ds.variables["wind_speed"][i0:i1, iy, ix]
         direct = np.ma.filled(direct, np.nan)
         direct_hours = time_var[i0:i1]
 
@@ -65,7 +65,7 @@ def check_daily_max() -> float:
         i0 = int(np.searchsorted(time_var, t0))
         i1 = int(np.searchsorted(time_var, t1, side="right"))
         assert i1 - i0 == 24, f"expected 24 hourly rows, got {i1 - i0}"
-        day_block = ds.variables["wind_speed"][i0:i1, w.CNN_Q_INDEX, :, :]
+        day_block = ds.variables["wind_speed"][i0:i1, :, :]
         day_block = np.ma.filled(day_block, np.nan)
     direct_dmax = np.nanmax(day_block, axis=0)
 

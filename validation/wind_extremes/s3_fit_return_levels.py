@@ -20,7 +20,7 @@ unless OVERWRITE_EXISTING is True.
 """
 
 # === CONFIGURATION ===
-PRODUCTS_TO_FIT = ["era5", "rtma", "cnn_raw", "cnn_bc", "cnn_q82", "cnn_q92", "cnn_ba"]   # == windx_common.ALL_PRODUCTS; subset to run this call
+PRODUCTS_TO_FIT = ["era5", "rtma", "cnn_raw", "cnn_q89", "cnn_q95", "cnn_ba"]   # == windx_common.ALL_PRODUCTS; subset to run this call
 WINDOWS = ["full", "common"]
 OVERWRITE_EXISTING = False          # True re-fits / re-writes outputs that already exist on disk
 OVERWRITE_STATIONS = True           # station fits are cheap: always refresh (obs QC changes don't touch the grids)
@@ -50,12 +50,11 @@ CODE_TO_STATUS = {v: k for k, v in FIT_CODE_MAP.items()}
 
 
 def _safe_pot_fit(series: pd.Series, n_years, rng) -> dict:
-    """windx_common.pot_fit, but never crashes the run. cnn_bc's flat
-    bias-correction clamp (Known facts in the plan) can put many declustered
-    peaks at the exact same capped value, giving the GPD excesses a zero
-    L-scale; rainlib.extremes.gpd_fit_lmom_excess raises ValueError on that.
-    A handful of such cells is an expected, reportable property of cnn_bc's
-    tail, not a bug -- so it is caught here and recorded as status
+    """windx_common.pot_fit, but never crashes the run. Tied peaks (e.g. the
+    flat bias-correction clamp of the v3 CNN-BC product, now dropped) can give
+    the GPD excesses a zero L-scale; evt.gpd_fit_lmom_excess raises ValueError
+    on that. A handful of such cells would be a reportable property of the
+    data, not a bug -- so it is caught here and recorded as status
     'fit_error' (NaN outputs, like 'insufficient_peaks') rather than
     propagated out of the worker and killing the whole grid fit."""
     try:

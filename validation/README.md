@@ -10,7 +10,7 @@ for the SF Bay Community Model over 1940–present. Relocated from
 - `validate_met_models.py` — the engine.
 - `run_validation.py` — era-aware driver (set `ERA`, run).
 - `analysis/` — ranking, combined skill, wind roses, comparison slides.
-- `wind_extremes/` — RP1/10/100 wind return levels (POT/GPD) for ERA5, RTMA, CNN-RTMA raw/BC/BA vs observations; own README.
+- `wind_extremes/` — RP1/10/100 wind return levels (POT/GPD) for ERA5, RTMA, CNN-RTMA raw/BA (v3 also BC) vs observations; own README.
 - `reference/` — station inventory + land boundary.
 - `stage_validation_data.py` — build the data bundle from raw sources.
 

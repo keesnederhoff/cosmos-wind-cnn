@@ -34,9 +34,9 @@ results/station_table.csv, results/station_rl.csv).
 
 # === CONFIGURATION ===
 ONLY_STATIONS: "list[str] | None" = None  # e.g. ["SFO"] for the example; None = every station with obs status ok
-FLAVOURS = ["era5", "rtma", "cnn_raw", "cnn_ba"]   # model sources overlaid on the obs (cnn_bc dropped 2026-10-08: clamped tail)
+FLAVOURS = ["era5", "rtma", "cnn_raw", "cnn_ba"]   # model sources overlaid on the obs (v3 cnn_bc dropped: clamped tail)
 SOURCE_COLORS = {"obs": "#000000", "era5": "#7f7f7f", "rtma": "#1f77b4", "cnn_raw": "#ff7f0e",
-                 "cnn_bc": "#9467bd", "cnn_ba": "#2ca02c"}   # as s4, except cnn_bc (black there) -> purple
+                 "cnn_ba": "#2ca02c"}   # as s4
 FIT_MAIN = "regional"                     # "regional" or "pipeline": the fit drawn solid for every source
 REGIONAL_LAMBDA = 2.0                     # peaks/yr of the regional fit (pipeline uses w.POT_LAMBDA = 3)
 SHOW_PIPELINE_OBS = True                  # also draw the s3 obs fit, dashed
@@ -117,7 +117,7 @@ def fit_pipeline(series: pd.Series, n_years: int, seed: list[int]) -> dict:
     """
     try:
         res = w.pot_fit(series, n_years, np.random.default_rng(seed), return_peaks=True)
-    except ValueError as e:   # cnn_bc clamp can zero the L-scale (see s3f._safe_pot_fit)
+    except ValueError as e:   # tied peaks can zero the L-scale (see s3f._safe_pot_fit)
         return {"status": "fit_error", "n_years": n_years, "error": str(e)}
     if res["status"] != "ok":
         return res

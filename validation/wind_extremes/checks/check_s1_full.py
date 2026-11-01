@@ -4,7 +4,7 @@ the number of days, the WY range, the overall fraction of NaN dmax entries,
 and the number of WY (of FULL_WY[product]) that are valid domain-wide under
 valid_water_years (i.e. every grid cell meets MIN_DAY_FRAC_WY).
 
-Expected: era5 / cnn_raw / cnn_bc -> 85 valid WY, rtma -> 14. CNN NaN fraction
+Expected (v4): era5 / cnn_raw -> 86 valid WY (1941-2026), rtma -> 15 (2012-2026). CNN NaN fraction
 should be < 0.5% (the annual ~7 h gust-seam gap must not push many cells below
 MIN_HOURS_PER_DAY = 12).
 """
