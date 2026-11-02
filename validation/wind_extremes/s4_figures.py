@@ -82,7 +82,7 @@ def _draw_coastline(ax, coast: list) -> None:
         ax.plot(poly[:, 0], poly[:, 1], color="0.35", lw=0.4, zorder=3)
 
 
-def _finish_map_panel(ax, letter: str, title: str, window: str, extent=MAP_EXTENT) -> None:
+def _finish_map_panel(ax, letter: str, title: str, window: str, product: str, extent=MAP_EXTENT) -> None:
     ax.set_xlim(extent[0], extent[1])
     ax.set_ylim(extent[2], extent[3])
     ax.set_aspect("equal")
@@ -90,9 +90,12 @@ def _finish_map_panel(ax, letter: str, title: str, window: str, extent=MAP_EXTEN
     ax.text(0.02, 0.97, f"({letter}) {title}", transform=ax.transAxes, ha="left", va="top",
             fontsize=12, fontweight="bold", zorder=11, color="black",
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.75))
-    if window == "common":
-        ax.text(0.98, 0.97, f"WY{w.COMMON_WY[0]}–{w.COMMON_WY[1]}", transform=ax.transAxes, ha="right", va="top",
-                fontsize=10, zorder=11)
+    # Fit window of this panel, bottom left: no station lies in the lowest ~12 % of the zoom extent, so the label
+    # never sits on a dot (top left and top right both do; the north arrow also occupies the top right of panel a).
+    wy_lo, wy_hi = w.COMMON_WY if window == "common" else w.FULL_WY[product]
+    ax.text(0.02, 0.02, f"WY{wy_lo}–{wy_hi}", transform=ax.transAxes, ha="left", va="bottom",
+            fontsize=10, zorder=11,
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.75))
 
 
 # === TASK 9: MAPS ===
@@ -164,7 +167,7 @@ def plot_rp_maps(rp: int, window: str, station_table: pd.DataFrame, station_rl: 
         if not obs_pts.empty:
             ax.scatter(obs_pts["x"], obs_pts["y"], c=obs_pts["rl"], cmap=cmap, norm=norm,
                        s=60, edgecolors="white", linewidths=1.2, zorder=5)
-        _finish_map_panel(ax, letter, w.PRODUCT_LABEL[product], window, extent=ZOOM_EXTENT)
+        _finish_map_panel(ax, letter, w.PRODUCT_LABEL[product], window, product, extent=ZOOM_EXTENT)
         if i == 0:
             add_scalebar(ax, ZOOM_SCALEBAR_M)
             add_north_arrow(ax)
