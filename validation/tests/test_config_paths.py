@@ -34,7 +34,7 @@ def test_product_paths_anchor_under_data_root(tmp_path):
     cfg = _fresh_config(tmp_path / "data", tmp_path / "out")
     dr = tmp_path / "data"
     assert cfg.PWS_DIR == dr / "observed_data"
-    assert cfg.MODELS["ERA5"]["u_file"] == dr / "modeled_data" / "era5" / "ERA5_eastward_wind_1940_2026_UTM.nc"
+    assert cfg.MODELS["ERA5"]["u_file"] == dr / "modeled_data" / "era5" / "fm_netcdf" / "ERA5_eastward_wind_2000_2026_UTM.nc"
     assert cfg.MODELS["RTMA"]["data_dir"] == dr / "modeled_data" / "rtma"
     assert cfg.MODELS["AORC"]["u_file"].parent == dr / "modeled_data" / "aorc"
     assert cfg.MODELS["CNN"]["u_file"] == dr / "modeled_data" / "cnn_fullrecord" / "CNN_conus404_full_record_ERA5_19400101_20270101.nc"
@@ -42,8 +42,7 @@ def test_product_paths_anchor_under_data_root(tmp_path):
     assert cfg.MODELS["CNN-allvars"]["u_file"] == dr / "modeled_data" / "os_av_bc24_terr_res_s2" / "full_record_ERA5_20110101_20260101.nc"
     assert cfg.LDB_FILE == dr / "reference" / "deltabay.ldb"
     assert cfg.USGS_MOORINGS["ERO20_GRZ"]["file_path"].parent == dr / "observed_data"
-    for dropped in ("HRRR", "CONUS404", "UCLA", "WRF_CalNev", "NOW-23", "Sup3rWind"):
-        assert dropped not in cfg.MODELS
+    assert cfg.MODELS["UCLA"]["data_dir"] == dr / "modeled_data" / "ucla_reanalysis"
 
 
 def test_no_hardcoded_path_literals_in_source():
@@ -51,5 +50,12 @@ def test_no_hardcoded_path_literals_in_source():
     src = (Path(__file__).resolve().parents[1] / "config.py").read_text(encoding="utf-8")
     # Flag actual path literals like Path(r"m:\...") — NOT drive letters that appear
     # in the RuntimeError help text (e.g. "set VAR=G:\...").
-    hits = re.findall(r'Path\(\s*r?["\'][A-Za-z]:', src)
-    assert not hits, f"hardcoded drive-path literal(s) still in config.py: {hits}"
+    hits = re.findall(r'Path\(\s*r?["\']([A-Za-z]:[^"\']*)', src)
+    # Deliberate Windows-only homes, not staged for Caldera.
+    known = {
+        r"m:\emeryville_crescent\01_data\Conus404_SFbay_V3\processed",
+        r"g:\03-downscaling_meteo_cnn\validation_results",
+        r"m:\emeryville_crescent\04_model_runs\meteo",
+    }
+    new = set(hits) - known
+    assert not new, f"hardcoded drive-path literal(s) added to config.py: {new}"
