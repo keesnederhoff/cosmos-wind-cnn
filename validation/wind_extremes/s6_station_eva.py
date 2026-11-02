@@ -10,7 +10,7 @@ alongside. Each source is drawn as:
 
 Fits:
 - "regional" (default plot): POT at REGIONAL_LAMBDA = 2/yr. The GPD shape is ONE pooled value
-  per source, the L-moment shape of the mean-normalised excesses of all 36 station series of
+  per source, the L-moment shape of the mean-normalised excesses of all ok station series of
   that source (rainlib.extremes.pooled_gpd_shape). Threshold and scale stay at-site
   (sigma = mean excess * (1 - xi)). The band is a two-level bootstrap: stations are resampled
   for the shape and excesses for the scale, so it includes the shape uncertainty.
@@ -38,6 +38,7 @@ FLAVOURS = ["era5", "rtma", "cnn_raw", "cnn_ba"]   # model sources overlaid on t
 SOURCE_COLORS = {"obs": "#000000", "era5": "#7f7f7f", "rtma": "#1f77b4", "cnn_raw": "#ff7f0e",
                  "cnn_ba": "#2ca02c"}   # as s4
 FIT_MAIN = "regional"                     # "regional" or "pipeline": the fit drawn solid for every source
+N_OK_STATIONS = 0                         # set in main(); printed in the figure legend and table method string
 REGIONAL_LAMBDA = 2.0                     # peaks/yr of the regional fit (pipeline uses w.POT_LAMBDA = 3)
 SHOW_PIPELINE_OBS = True                  # also draw the s3 obs fit, dashed
 TABLE_RPS = [10, 50, 100]
@@ -281,7 +282,7 @@ def plot_station(sid: str, title: str, fits: dict, peaks: dict, xi_pool: dict) -
 
     band = plt.Rectangle((0, 0), 1, 1, color="0.72", alpha=0.45, lw=0, label="Observed 90 % bootstrap band")
     if FIT_MAIN == "regional":
-        head = (f"POT/GPD λ={REGIONAL_LAMBDA:g}/yr, one pooled shape per source (36 stations), 48-h declustering; "
+        head = (f"POT/GPD λ={REGIONAL_LAMBDA:g}/yr, one pooled shape per source ({N_OK_STATIONS} stations), 48-h declustering; "
                 f"band includes shape uncertainty; markers: λ=3 peaks at Weibull positions")
     else:
         head = "POT/GPD λ=3/yr (s3), 48-h declustering; markers: peaks at Weibull positions"
@@ -306,7 +307,7 @@ def _row(sid, name, network, source, fit_name, res, wy, xi_pool_val=None) -> dic
             m = int(np.flatnonzero(res["T"] == t)[0])
             row.update({f"rl_{t}": res["curve"][m], f"lo_{t}": res["band_lo"][m], f"hi_{t}": res["band_hi"][m]})
     if fit_name == "regional":
-        method = f"POT-GPD lam{REGIONAL_LAMBDA:g} sep48h dailymax, pooled L-moment shape per source (36 stn), at-site u/sigma"
+        method = f"POT-GPD lam{REGIONAL_LAMBDA:g} sep48h dailymax, pooled L-moment shape per source ({N_OK_STATIONS} stn), at-site u/sigma"
     else:
         method = "POT-GPD-Lmom lam3 sep48h dailymax (s3)"
     row.update({"method": method, "plotting_position": "Weibull (k+1)/(m*rate), lam3 peaks",
@@ -325,8 +326,10 @@ def main() -> None:
     prods = {p: s3f.load_stations_hourly(p) for p in FLAVOURS}
     sid_to_j = {p: {s: j for j, s in enumerate(prods[p][0])} for p in FLAVOURS}
 
-    # pass 1: series + lambda=3 peaks for every ok station and source (the pooled shape needs all 36)
+    # pass 1: series + lambda=3 peaks for every ok station and source (the pooled shape needs all of them)
     stations = [(i, st) for i, st in enumerate(station_table.itertuples()) if st.status == "ok"]
+    global N_OK_STATIONS
+    N_OK_STATIONS = len(stations)
     data: dict = {}
     for i, st in stations:
         sid = st.station_id

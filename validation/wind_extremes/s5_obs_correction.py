@@ -1,9 +1,9 @@
 """Stage 5: observation-anchored correction of the CNN-RTMA raw (P50) return-level maps.
 
 Builds a station-level correction factor f = exp(r), r = ln(obs_rl / cnn_rl), from the
-36 matched-mode cnn_raw stations in results/station_rl.csv, picks the correction model
+matched-mode cnn_raw stations (37 in v4, 36 in v3) in results/station_rl.csv, picks the correction model
 ("variant") by leave-one-station-out (LOO) cross-validation, and applies the winning
-variant's factor field (fit on all 36 stations) to the cnn_raw full- and common-window
+variant's factor field (fit on all stations) to the cnn_raw full- and common-window
 return-level maps as the last step of the pipeline.
 
 Reads only from windx_common.py, s4_figures.py, figstyle.py and skill_utils.py -- none
@@ -33,6 +33,7 @@ GP_N_RESTARTS = 3
 GP_RANDOM_STATE = 0
 
 MIN_SKILL_N = 5                        # compute_skill_scores min_n
+EXPECTED_N_STATIONS = 37               # matched cnn_raw stations with an ok obs fit (v3: 36; v4 adds DWA, which reaches 6 valid WY with WY2026)
 WINNER_MARGIN = 0.02                   # within 2% of the lowest mean LOO RMSE -> tie, pick simplest
 
 ZOOM_EXTENT = (498000.0, 634000.0, 4108000.0, 4283000.0)   # xmin, xmax, ymin, ymax (m, UTM10)
@@ -274,7 +275,7 @@ def pick_winner(loo_df: pd.DataFrame) -> tuple[str, pd.Series]:
     return winner, mean_rmse
 
 
-# === FINAL FIT (all 36 stations) AND FACTOR TABLE ===
+# === FINAL FIT (all stations) AND FACTOR TABLE ===
 
 def build_factor_table(station_df: pd.DataFrame) -> pd.DataFrame:
     """Per variant x rp: exp(median r) global/land/water, and the GP kernel string for V5."""
@@ -513,9 +514,9 @@ def main() -> None:
 
     station_df = build_station_frame(station_table, station_rl)
     n_stations = len(station_df)
-    print(f"stations: {n_stations} (expected 36); land={int((station_df['class'] == 'land').sum())}, "
+    print(f"stations: {n_stations} (expected {EXPECTED_N_STATIONS}); land={int((station_df['class'] == 'land').sum())}, "
           f"water={int((station_df['class'] == 'water').sum())}")
-    assert n_stations == 36, f"expected 36 matched cnn_raw stations, got {n_stations}"
+    assert n_stations == EXPECTED_N_STATIONS, f"expected {EXPECTED_N_STATIONS} matched cnn_raw stations, got {n_stations}"
 
     print("\n=== LOO cross-validation ===")
     loo_df, pred_store = run_loo(station_df)
@@ -535,7 +536,7 @@ def main() -> None:
     print(f"winner: {winner}, margin {100.0 * (mean_rmse[winner] / min_rmse - 1.0):.2f}% "
           f"above the lowest mean RMSE ({min_rmse:.4f} m/s)")
 
-    print("\n=== Final fit (all 36 stations) and factor table ===")
+    print("\n=== Final fit (all stations) and factor table ===")
     factor_table = build_factor_table(station_df)
     factor_path = w.RESULT_DIR / "obs_correction_factors.csv"
     factor_table.to_csv(factor_path, index=False)
@@ -543,7 +544,7 @@ def main() -> None:
     with pd.option_context("display.width", 160, "display.max_columns", 20):
         print(factor_table.drop(columns=["gp_kernel"]).to_string(index=False, float_format=lambda v: f"{v:.4f}"))
     gp_rows = factor_table[factor_table["variant"] == "V5_lw_gp"][["rp", "gp_kernel"]]
-    print("\nGP kernel per RP (V5_lw_gp, fit on all 36 stations):")
+    print("\nGP kernel per RP (V5_lw_gp, fit on all stations):")
     for _, r in gp_rows.iterrows():
         print(f"  RP{int(r['rp'])}: {r['gp_kernel']}")
 
