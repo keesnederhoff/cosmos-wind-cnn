@@ -13,7 +13,7 @@ def _root(var: str) -> Path:
 
 
 ROOT       = _root("COSMOS_WINDX_OUTPUT_ROOT")      # cache/, results/, figures/ (outside the repo)
-CNN_ROOT   = _root("COSMOS_WINDX_CNN_ROOT")         # holds sf_bay_rtma/results and cnn_fullrecord
+CNN_ROOT   = _root("COSMOS_WINDX_CNN_ROOT")         # holds sf_bay_rtma/results (v1940_product) and archive/v3 (v3_vs_v4_rl.py)
 MET_ROOT   = _root("COSMOS_VALIDATION_DATA_ROOT")   # validation bundle: modeled_data/, observed_data/, reference/
 CACHE_DIR  = ROOT / "cache"
 RESULT_DIR = ROOT / "results"
@@ -26,12 +26,12 @@ CNN_BA     = CNN_DIR / "CNN_RTMA_s3_P50_uvs_BA_19400101_20261001.nc"            
 CNN_QUANT  = CNN_DIR / "CNN_RTMA_s3_speed_quantiles_raw_19400101_20261001.nc"     # (time, quantile, y, x), 8 native levels
 BA_FACTOR_MAP = CNN_DIR / "BA_factor_map_s3_E3q90.nc"
 
-ERA5_DIR   = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf"                    # identical copy also in sf_bay_rtma/raw_data
+ERA5_DIR   = MET_ROOT / "modeled_data" / "era5" / "fm_netcdf"                    # identical copy also in modeled_data/cnn_inputs/sf_bay_rtma/raw_data
 ERA5_U     = ERA5_DIR / "ERA5_eastward_wind_1940_2026_UTM.nc"
 ERA5_V     = ERA5_DIR / "ERA5_northward_wind_1940_2026_UTM.nc"
 # RTMA speed = hypot(u, v) of the v4 raw_data components (earth-relative; the grid-relative pair gives the same speed to 4e-6 m/s).
 # The old fm_netcdf wind_speed file ends 2026-07-30 and is not used.
-RTMA_DIR   = CNN_ROOT / "sf_bay_rtma" / "raw_data"
+RTMA_DIR   = MET_ROOT / "modeled_data" / "cnn_inputs" / "sf_bay_rtma" / "raw_data"
 RTMA_U     = RTMA_DIR / "RTMA_SFbay_2p5km_eastward_wind_2011_2026_UTM10_earthrel.nc"
 RTMA_V     = RTMA_DIR / "RTMA_SFbay_2p5km_northward_wind_2011_2026_UTM10_earthrel.nc"
 OBS_DIR    = MET_ROOT / "observed_data"

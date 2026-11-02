@@ -11,6 +11,7 @@ commit 5e2edc8 (git tag wind-extremes-v3). From the v4 input change on, windx_co
 record, so this comparison no longer applies to a default run. To re-verify the engine, check out the tag, run s2-s6
 there into NEW, and run this script.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ import pandas as pd
 
 # === CONFIGURATION ===
 GOLDEN = Path(r"g:\03-downscaling_meteo_cnn\archive\v3\wind_extremes\results_golden_20261003")
-NEW = Path(r"g:\03-downscaling_meteo_cnn\wind_extremes_repo_check\results")
+NEW = Path(os.environ.get("COSMOS_WINDX_OUTPUT_ROOT", "")) / "results"   # output root of the v3 re-run being checked (same variable as windx_common); not the v4 outputs
 RTOL = 1e-9
 FIGURE_CSVS = ["station_eva_table.csv"]   # golden copies in GOLDEN/figures/, new files in NEW.parent/figures/
 # === END CONFIGURATION ===
@@ -93,6 +94,8 @@ def compare_nc(gold: Path, new: Path) -> str:
 
 
 def main() -> int:
+    if not os.environ.get("COSMOS_WINDX_OUTPUT_ROOT"):
+        sys.exit("COSMOS_WINDX_OUTPUT_ROOT is not set: point it at the output root of the v3 re-run to check (NEW = <root>/results).")
     jobs = []
     for gold in sorted(GOLDEN.glob("*.csv")) + sorted(GOLDEN.glob("*.nc")):
         jobs.append((gold, NEW / gold.name))

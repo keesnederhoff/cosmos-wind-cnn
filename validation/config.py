@@ -19,7 +19,7 @@ def _root(var: str) -> Path:
     if not val:
         raise RuntimeError(
             f"{var} is not set. Point it at the validation data/output base.\n"
-            f"  Windows:  set {var}=G:\\03-downscaling_meteo_cnn\\validation\n"
+            f"  Windows:  set {var}=G:\\01_meteorlogical_analysis_sfbay\n"
             f"  Caldera:  export {var}=/caldera/.../validation"
         )
     return Path(val)
@@ -565,8 +565,9 @@ MODEL_COLORS['CNN-quantile-v3'] = '#000000'
 # products dropped in the 2026-07-23 self-contained relocation (entries from
 # git d1b927e~1). UCLA/NOW-23/Sup3rWind were moved off m:\ into the validation
 # data home (modeled_data\other_meteo_data\, found 2026-08-30) so they resolve
-# from DATA_ROOT; HRRR still lives on m:\ like CONUS404's C404_DIR above and is
-# NOT staged for Caldera -- Windows-only until staged.
+# from DATA_ROOT (UCLA has since moved up to modeled_data\ucla_reanalysis\); HRRR
+# still lives on m:\ like CONUS404's C404_DIR above and is NOT staged for Caldera --
+# Windows-only until staged.
 # Coverage: HRRR Oct2014-2026, UCLA 1980-2020, NOW-23 2000-2022,
 # Sup3rWind 2007-2013. Loaders (load_model, load_model_ucla, load_model_box)
 # and their dispatch branches never left validate_met_models.py.
@@ -581,7 +582,7 @@ MODELS['HRRR'] = {
     'temp_var': 'air_temperature', 'single_file': False,
 }
 MODELS['UCLA'] = {
-    'data_dir': _OTHER_METEO / 'data' / 'ucla_reanalysis',
+    'data_dir': DATA_ROOT / "modeled_data" / "ucla_reanalysis",
     'u_pattern': 'era5_reanalysis_1hr_u10_*.nc',
     'v_pattern': 'era5_reanalysis_1hr_v10_*.nc',
     'temp_pattern': 'era5_reanalysis_1hr_t2_*.nc',
