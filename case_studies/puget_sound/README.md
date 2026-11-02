@@ -12,7 +12,7 @@ The repo holds only `configs/` + `README.md`. Raw data and run outputs are exter
 
 ```bat
 :: Windows
-set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+set COSMOS_DATA_ROOT=G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs
 set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
 ```
 
