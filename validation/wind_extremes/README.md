@@ -19,7 +19,7 @@ set COSMOS_WINDX_OUTPUT_ROOT=g:\03-downscaling_meteo_cnn\wind_extremes
 ```
 
 - `COSMOS_VALIDATION_DATA_ROOT` is the validation bundle (`modeled_data\`, `observed_data\`, `reference\`), the same variable `validation/config.py` reads.
-- `COSMOS_WINDX_CNN_ROOT` holds `sf_bay_rtma\results` and `cnn_fullrecord`.
+- `COSMOS_WINDX_CNN_ROOT` holds `sf_bay_rtma\results` (the v1940 product) and `archive\v3` (read by `v3_vs_v4_rl.py`).
 - `COSMOS_WINDX_OUTPUT_ROOT` receives `cache\`, `results\` and `figures\`. Nothing generated is written inside the repo. All file names below that start with `cache`, `results` or `figures` are relative to this root.
 
 On Linux (Caldera) use `export` with the equivalent paths.
@@ -56,7 +56,7 @@ s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It reads t
 | CNN-RTMA v4 quantiles | `...\v1940_product\CNN_RTMA_s3_speed_quantiles_raw_19400101_20261001.nc` | (time, quantile, y, x); tau selected by value: 0.8922 (`cnn_q89`) and 0.9510 (`cnn_q95`), no interpolation |
 | BA factor map | `...\v1940_product\BA_factor_map_s3_E3q90.nc` | constant factor per cell; BA return levels = F x raw |
 | ERA5 | `modeled_data\era5\fm_netcdf\ERA5_{eastward,northward}_wind_1940_2026_UTM.nc` (under `COSMOS_VALIDATION_DATA_ROOT`) | 25 km; real data to 2026-10-01 13:00 UTC |
-| RTMA | `sf_bay_rtma\raw_data\RTMA_SFbay_2p5km_{eastward,northward}_wind_2011_2026_UTM10_earthrel.nc` (under `COSMOS_WINDX_CNN_ROOT`) | 2.5 km; speed = hypot(u, v); record to 2026-10-04 18:00 UTC with gaps |
+| RTMA | `modeled_data\cnn_inputs\sf_bay_rtma\raw_data\RTMA_SFbay_2p5km_{eastward,northward}_wind_2011_2026_UTM10_earthrel.nc` (under `COSMOS_VALIDATION_DATA_ROOT`) | 2.5 km; speed = hypot(u, v); record to 2026-10-04 18:00 UTC with gaps |
 | Obs | `...\observed_data\pws_sfbay_waterfront_{iem,ndbc}_to20261001.nc`, 4 USGS mooring files | CWOP not used (file fails to open) |
 
 ## Method (decisions agreed 2026-10-02)

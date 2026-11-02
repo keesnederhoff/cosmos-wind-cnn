@@ -122,8 +122,8 @@ cosmos-wind-cnn/
 Data and results live **outside the repo**, controlled by two environment variables that must be set before running anything (the code raises a clear error if either is unset):
 
 ```bat
-:: Windows (locally, point both at your storage drive)
-set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+:: Windows (locally, point each at its storage folder on G:)
+set COSMOS_DATA_ROOT=G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs
 set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
 ```
 ```bash
@@ -136,7 +136,7 @@ The repo case-study folders hold **only** `configs/` + `README.md`. Everything e
 
 ```
 <COSMOS_DATA_ROOT>/<case>/raw_data/        # Raw NetCDF input files (shared across runs)
-    e.g. G:\03-downscaling_meteo_cnn\sf_bay_rtma\raw_data\
+    e.g. G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs\sf_bay_rtma\raw_data\
 
 case_studies/<case>/                       # Repo: configs + README only
 ├── configs/                               # YAML configs (checked into git)

@@ -5,8 +5,8 @@
 The repo holds **only** `configs/` + `README.md` for each case study. Data and results are external, controlled by two env vars that must be set before running anything:
 
 ```bat
-:: Windows — point both at your storage drive
-set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+:: Windows — point each at its storage folder
+set COSMOS_DATA_ROOT=G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs
 set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
 ```
 ```bash

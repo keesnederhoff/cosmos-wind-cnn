@@ -5,8 +5,8 @@
 The repo holds **only** `configs/` + `README.md` for each case study. Raw data and run outputs are external, controlled by two env vars that must be set before running anything (the code raises a clear error if either is unset):
 
 ```bat
-:: Windows — point both at your storage drive
-set COSMOS_DATA_ROOT=G:\03-downscaling_meteo_cnn
+:: Windows — point each at its storage folder
+set COSMOS_DATA_ROOT=G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs
 set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
 ```
 ```bash
@@ -14,7 +14,7 @@ set COSMOS_RESULTS_ROOT=G:\03-downscaling_meteo_cnn
 ```
 
 With those set:
-- Raw inputs go to `$COSMOS_DATA_ROOT/my_study/raw_data/` (locally `G:\03-downscaling_meteo_cnn\my_study\raw_data\`)
+- Raw inputs go to `$COSMOS_DATA_ROOT/my_study/raw_data/` (locally `G:\01_meteorlogical_analysis_sfbay\modeled_data\cnn_inputs\my_study\raw_data\`)
 - Per-run outputs land at `$COSMOS_RESULTS_ROOT/my_study/results/<run_name>/` (locally `G:\03-downscaling_meteo_cnn\my_study\results\<run_name>\`)
 
 `case_studies/_template/` is the canonical example — copy it and follow the steps below.

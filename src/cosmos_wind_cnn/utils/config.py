@@ -259,7 +259,7 @@ def get_data_dir(case_dir):
         raise RuntimeError(
             "COSMOS_DATA_ROOT is not set. Point it at your raw-data storage base "
             "(raw inputs are read from <COSMOS_DATA_ROOT>/<case_name>/raw_data/).\n"
-            "  Windows:  set COSMOS_DATA_ROOT=G:\\03-downscaling_meteo_cnn\n"
+            "  Windows:  set COSMOS_DATA_ROOT=G:\\01_meteorlogical_analysis_sfbay\\modeled_data\\cnn_inputs\n"
             "  Linux:    export COSMOS_DATA_ROOT=/path/to/storage"
         )
     return Path(root) / case_dir.name / 'raw_data'
