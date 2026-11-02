@@ -22,7 +22,7 @@ set COSMOS_WINDX_OUTPUT_ROOT=g:\03-downscaling_meteo_cnn\wind_extremes
 - `COSMOS_WINDX_CNN_ROOT` holds `sf_bay_rtma\results` (the v1940 product) and `archive\v3` (read by `v3_vs_v4_rl.py`).
 - `COSMOS_WINDX_OUTPUT_ROOT` receives `cache\`, `results\` and `figures\`. Nothing generated is written inside the repo. All file names below that start with `cache`, `results` or `figures` are relative to this root.
 
-On Linux (Caldera) use `export` with the equivalent paths.
+This pipeline runs on the desktop only. The Caldera validation bundle (`validation/assemble_bundle.sh`) does not provide `modeled_data/cnn_inputs/sf_bay_rtma/raw_data`, so a Caldera run would need that path added first.
 
 `evt.py` is a vendored copy of 16 objects from the private ACFCD `rainlib` (`extremes.py`, `trends.py`), taken at repo commit 902ae61. Do not edit it; re-copy if rainlib changes. `tests/test_evt_vendored.py` checks it against `rainlib` and skips when `rainlib` is not importable (run it in the `acfcd_rain` env).
 
