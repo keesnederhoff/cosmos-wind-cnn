@@ -20,6 +20,9 @@ from pathlib import Path
 GRID_TOL_M = 0.5                       # x/y coordinate match tolerance, map vs. water-mask grid
 
 VARIANTS = ["V0_none", "V1_global", "V2_landwater", "V3_idw", "V4_lw_kernel", "V5_lw_gp"]
+VARIANT_LABEL = {"V0_none": "no correction", "V1_global": "one global factor", "V2_landwater": "land/water factor",
+                 "V3_idw": "inverse-distance weighting", "V4_lw_kernel": "land/water factor + 20 km kernel residual",
+                 "V5_lw_gp": "land/water factor + Gaussian-process residual"}   # readable names for figures
 SIMPLICITY = {v: i for i, v in enumerate(VARIANTS)}   # tie-break order for the winner
 
 MIN_CLASS_N = 3                        # land/water median falls back to the global median below this
@@ -64,6 +67,7 @@ from figstyle import apply_style, km_axes, add_scalebar, add_north_arrow, save_f
 from skill_utils import compute_skill_scores
 
 RETURN_PERIODS = w.RETURN_PERIODS
+PRODUCT_NAME = w.PRODUCT_LABEL["cnn_raw"]   # "CNN-RTMA v4 raw"
 
 
 # === DATA LOADING ===
@@ -393,7 +397,7 @@ def plot_loo_figure(pred_store: dict, loo_df: pd.DataFrame, winner: str) -> Path
 
 def plot_map_figure(winner: str, x: np.ndarray, y: np.ndarray, corrected_full: dict,
                      factor_fields: dict, station_df: pd.DataFrame, station_table: pd.DataFrame,
-                     station_rl: pd.DataFrame, coast: list) -> Path:
+                     station_rl: pd.DataFrame, coast: list, wy_range: str) -> Path:
     apply_style()
     fig, axes = plt.subplots(2, 3, figsize=(16, 10.5), constrained_layout=True)
     xe, ye = cell_edges(x), cell_edges(y)
@@ -424,7 +428,7 @@ def plot_map_figure(winner: str, x: np.ndarray, y: np.ndarray, corrected_full: d
         ax.set_ylim(ZOOM_EXTENT[2], ZOOM_EXTENT[3])
         ax.set_aspect("equal")
         km_axes(ax)
-        ax.text(0.02, 0.97, f"({letter}) RP{rp} corrected ({winner})", transform=ax.transAxes,
+        ax.text(0.02, 0.97, f"({letter}) RP{rp} corrected", transform=ax.transAxes,
                 ha="left", va="top", fontsize=11, fontweight="bold", zorder=11,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.75))
         cb = fig.colorbar(mesh, ax=ax, shrink=0.85, pad=0.02, extend="both",
@@ -463,9 +467,33 @@ def plot_map_figure(winner: str, x: np.ndarray, y: np.ndarray, corrected_full: d
     cb2 = fig.colorbar(mesh2, ax=axes[1, :], shrink=0.85, pad=0.02)
     cb2.set_label("Correction factor, obs / CNN-raw (station points: station's own ratio)")
 
+    # What was corrected, fit window and method: once below the panels (no title, nothing over the data)
+    wy_txt = wy_range.replace("-", "–")
+    fig.supxlabel(f"{PRODUCT_NAME} return levels multiplied by the factor in the bottom row; fit window WY{wy_txt}; "
+                  f"method: {VARIANT_LABEL.get(winner, winner)}, fitted on {len(station_df)} stations.\n"
+                  "Circles: observed return level from each station's full record (top row); "
+                  "station's own obs / CNN ratio (bottom row).", fontsize=11)
+
     written = save_figure(fig, "map_obscorr", outdir=w.FIG_DIR, purpose="report")
     plt.close(fig)
     return written[0]
+
+
+def replot_map_from_results() -> Path:
+    """Redraw map_obscorr.png from the saved rl_map_cnn_obscorr_full.nc and station files only (no refit)."""
+    station_table = pd.read_csv(w.RESULT_DIR / "station_table.csv")
+    station_rl = pd.read_csv(w.RESULT_DIR / "station_rl.csv")
+    coast = w.read_ldb(w.LDB_FILE)
+    station_df = build_station_frame(station_table, station_rl)
+    with netCDF4.Dataset(w.RESULT_DIR / "rl_map_cnn_obscorr_full.nc") as ds:
+        x = np.asarray(ds.variables["x"][:], dtype=np.float64)
+        y = np.asarray(ds.variables["y"][:], dtype=np.float64)
+        winner, wy_range = ds.variant, ds.wy_range
+        corrected = {f"rl_{rp}": np.ma.filled(ds.variables[f"rl_{rp}"][:], np.nan).astype(np.float64)
+                     for rp in RETURN_PERIODS}
+        factors = {rp: np.ma.filled(ds.variables[f"factor_{rp}"][:], np.nan).astype(np.float64)
+                   for rp in RETURN_PERIODS}
+    return plot_map_figure(winner, x, y, corrected, factors, station_df, station_table, station_rl, coast, wy_range)
 
 
 # === NETCDF OUTPUT ===
@@ -592,7 +620,7 @@ def main() -> None:
     fig1 = plot_loo_figure(pred_store, loo_df, winner)
     print(f"wrote {fig1}")
     fig2 = plot_map_figure(winner, x, y, outputs["full"], factor_fields, station_df, station_table,
-                            station_rl, coast)
+                            station_rl, coast, full_map["attrs"]["wy_range"])
     print(f"wrote {fig2}")
 
     print("\ns5_obs_correction: done")

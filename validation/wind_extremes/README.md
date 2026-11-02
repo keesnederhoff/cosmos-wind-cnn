@@ -65,7 +65,7 @@ s1 skips any product with a `finalize OK` line in `cache\s1_log.txt`. It reads t
 |---|---|
 | Estimator | POT/GPD at λ = 3 peaks/yr. Greedy declustering with peaks ≥ 48 h apart, run on daily maxima of hourly speed. GPD by L-moments; the exponential-tail value is kept as `rl_exp_*`. 1000-draw nonparametric bootstrap, 90 % CI. Code: `rainlib.extremes` (acfcd_rain) |
 | Year | Water year from October. A day is valid with ≥ 12 h, a WY with ≥ 80 % valid days. Series with < 6 valid WY are listed as `dropped_<6yr`, not fitted |
-| Windows | Maps: `full` (ERA5/CNN WY1941–2025, RTMA WY2012–2025) and `common` (WY2012–2025). Stations: `full` (each source's own record; the product value is read from its full map) and `matched` (obs and product on the same WYs and the same valid-hour mask; each product has its own obs fit) |
+| Windows | Maps: `full` (ERA5/CNN WY1941–2026, RTMA WY2012–2026) and `common` (WY2012–2026). Stations: `full` (each source's own record; the product value is read from its full map) and `matched` (obs and product on the same WYs and the same valid-hour mask; each product has its own obs fit) |
 | Obs time base | Hourly mean of readings in [h − 30 min, h + 30 min). For ASOS this is usually a single 2-min report |
 | Direction | Omnidirectional |
 
@@ -103,7 +103,7 @@ The persistence test removes the IEM values sitting at exactly 20.00 and 25.00 m
 
 ## Results (v4, 2026-11-02)
 
-Matched mode, 37 stations (IEM 20, NDBC 17). Five stations have no fit: the four USGS moorings and sfxc1 have no valid water year. Median model/obs ratio in brackets; bias in m/s. Source: `results\skill_station_rl.csv`.
+Matched mode, 37 stations (IEM 20, NDBC 17). Five stations have no fit: the four USGS moorings and sfxc1 have no valid water year. Median model/obs ratio in brackets; bias in m/s. Source: `results\skill_station_rl.csv`. Skill is Willmott d across stations. In matched mode each product is scored on its own obs window (RTMA WY2012-2026, ERA5 and CNN up to the full record), so the RTMA rows and the CNN rows are not scored against identical obs.
 
 | | RP1 bias | RP10 bias | RP100 bias | Willmott skill RP1 / RP10 / RP100 | RMSE RP1 / RP10 / RP100 |
 |---|---|---|---|---|---|
@@ -145,9 +145,9 @@ Part of the airport (IEM) deficit is representativeness: an ASOS hourly value is
 | land/water + 20 km kernel | 2.74 |
 | land/water + GP | **2.64** |
 
-The winner changed from v3 (kernel variant, 2.87) to the GP variant. Its LOO bias is +0.06 / +0.11 / +0.40 m/s, RMSE 1.69 / 2.26 / 3.96 m/s and skill 0.82 / 0.71 / 0.51 at RP1/10/100. Land / water factors: RP1 1.47 / 1.25, RP10 1.47 / 1.34, RP100 1.46 / 1.35. At RP100 the GP has almost no spatial signal (kernel amplitude 0.01, at its lower bound) and the map is the land/water step. The corrected RP100 map exceeds 30 m/s in 4,492 cells, mostly the offshore corner (maximum 34.3 m/s), where no station constrains it (`figures\map_obscorr.png`); treat the offshore corrected RP100 as an extrapolation of the factor. Caveats as in v3: the land factor rests on ASOS airports only, and the factor steps at the shoreline.
+The winner changed from v3 (kernel variant, 2.87) to the GP variant. Its LOO bias is +0.06 / +0.11 / +0.40 m/s, RMSE 1.69 / 2.26 / 3.96 m/s and skill 0.82 / 0.71 / 0.51 at RP1/10/100. Land / water factors: RP1 1.47 / 1.25, RP10 1.47 / 1.34, RP100 1.46 / 1.35. At RP100 the GP has almost no spatial signal (kernel amplitude 0.01, at its lower bound) and the map is the land/water step. The corrected RP100 map exceeds 30 m/s in 4,492 cells, almost all of them offshore (4,491 ocean cells, 1 land cell, spanning x 319-599 km; maximum 34.3 m/s), where no station constrains the factor (`figures\map_obscorr.png`); treat the offshore corrected RP100 as an extrapolation of the factor. Caveats as in v3: the land factor rests on ASOS airports only, and the factor steps at the shoreline.
 
-**Homogeneity.** Pettitt finds a significant break (p < 0.05) at 9 of the 16 records with >= 20 WY (v3: 9 of 16). Post-break RP100 against the full record: OAK -9.7 %, NUQ -12.0 %, STS -18.9 %, LVK -18.8 %, 46026 -11.1 %. SQL (+71 %), SUU (+22 %) and CCR (+15 %) come from short post-break sub-periods with unstable free-shape fits and are not trends. Observed RP100 at the long airport records carries about +-10 % from inhomogeneity alone.
+**Homogeneity.** Pettitt finds a significant break (p < 0.05) at 9 of the 16 records with >= 20 WY (v3: 9 of 16). Post-break RP100 against the full record: OAK -9.7 %, NUQ -12.0 %, STS -18.9 %, LVK -18.7 %, 46026 -11.1 %. SQL (+71 %), SUU (+22 %) and CCR (+15 %) come from short post-break sub-periods with unstable free-shape fits and are not trends. Observed RP100 at the long airport records carries about +-10 % from inhomogeneity alone.
 
 ### Checks run on the v4 results
 
@@ -155,9 +155,9 @@ The winner changed from v3 (kernel variant, 2.87) to the GP variant. Its LOO bia
 - **RP1 <= RP10 <= RP100** within 1e-3 m/s: 0 violations in all 12 maps (6 products x 2 windows) and in 733 ok station rows.
 - **Failed fits:** none. fit_code is 0 in every cell of every map (357 cells for ERA5, 19,926 for the others) and no station fit failed.
 - **N of WY:** ERA5 and the four CNN products have 86 WY (WY1941-2026) in the full window in every cell; RTMA has 15 (WY2012-2026); the common window has 15 everywhere.
-- **Stations per WY** (valid obs WY, all / IEM / NDBC): WY1941 2/2/0, WY1981 10/9/1, WY2001 16/14/2, WY2012 25/17/8, WY2020 33/16/17, WY2021 35 (the maximum), WY2025 34/20/14, WY2026 20/20/0. All 20 IEM stations reach WY2026 and no NDBC station does. The NDBC file runs to 2026-09-30, but its WY2026 is gappy: aamc1, for example, has data only in Oct-Dec 2025, May-Jun 2026 and part of Sep 2026, and nothing in Jan-Apr or Jul-Aug. No NDBC station reaches the 80 % valid-day threshold. This is the archive, not the pipeline.
-- **No jump across the ERA5-driven eras.** The ratio of the CNN to the ERA5 median (over stations) annual-maximum hourly speed is 1.07-1.16 in every 5-WY block through 2024 (mean 1.13, SD 0.05 per WY). WY2026 is 1.05 (-1.6 SD); only WY1956 (0.99) is lower.
-- **RTMA far-field tails.** The same far-south cell (x 611 km, y 4038 km, outside the station zoom) is the RTMA maximum in v3 and v4 (RP100 36.3 and 37.6 m/s). RTMA RP100 exceeds 30 m/s in 386 cells (v3: 137), 192 cells have xi > 0.3 and 321 have xi < -0.5, from a 15-WY free-shape fit. Treat the RTMA map away from the stations as unconstrained. No CNN cell exceeds 30 m/s (raw maximum 25.4, BA 28.1).
+- **Stations per WY** (valid obs WY, all / IEM / NDBC): WY1941 2/2/0, WY1981 10/9/1, WY2001 16/14/2, WY2012 25/17/8, WY2020 33/16/17, WY2021 35/18/17, WY2022 35/19/16, WY2023 35/20/15, WY2024 35/20/15 (35 is the maximum, reached in WY2021-2024), WY2025 34/20/14, WY2026 20/20/0. All 20 IEM stations reach WY2026 and no NDBC station does. The NDBC file runs to 2026-09-30, but its WY2026 is gappy: aamc1, for example, has data only in Oct-Dec 2025, May-Jun 2026 and part of Sep 2026, and nothing in Jan-Apr or Jul-Aug. No NDBC station reaches the 80 % valid-day threshold. This is the archive, not the pipeline.
+- **No jump across the ERA5-driven eras.** The ratio is the median over the 37 ok stations of the CNN raw annual-maximum hourly speed (WY1941-2026, at the station cell) divided by the same median for ERA5. Averaged over 5-WY blocks (WY1941-45, 1946-50, ... 2021-25) it is 1.08-1.16 (lowest 1951-55, highest 2011-15); per WY through 2024 the mean is 1.12 and the SD 0.05. WY2026 is 1.02 (-2.1 SD) and WY2025 1.09. Only WY1956 (1.01) and WY1983 (1.00) are lower than WY2026, so the drop is at the low end but not unique. With all 42 cache stations, including the five dropped from the fits, WY2026 is 1.05 (-1.6 SD). Computed from `cache\stations_hourly_{cnn_raw,era5}.nc`.
+- **RTMA far-field tails.** The same far-south cell (x 611 km, y 4038 km, outside the station zoom) is the RTMA maximum in v3 and v4 (RP100 36.3 and 37.6 m/s). RTMA RP100 exceeds 30 m/s in 386 cells (v3: 137), 192 cells have xi > 0.3 and 321 have xi < -0.5, from a 15-WY free-shape fit. Treat the RTMA map away from the stations as unconstrained. In the full window no CNN cell exceeds 30 m/s (raw maximum 25.4, BA 28.1). In the common window BA has 3 cells above 30 (maximum 30.4), cnn_q89 has 5 (maximum 30.7) and cnn_q95 has 97 (maximum 33.0); cnn_raw stays below 30 (maximum 27.5). Counts from `rl_100` in `results\rl_map_*_common.nc`.
 
 ### v3 vs v4 (CNN raw and BA, WY1941-2025 refit)
 
@@ -172,7 +172,7 @@ The winner changed from v3 (kernel variant, 2.87) to the GP variant. Its LOO bia
 | BA | 10 | 20.04 -> 20.54 | 7.8-23.6 -> 7.4-24.2 | -2.86 -> -2.69 | 3.47 -> 3.19 | 0.66 -> 0.67 | 0.84 -> 0.84 |
 | BA | 100 | 21.86 -> 22.71 | 8.8-28.6 -> 8.4-28.3 | -3.76 -> -3.51 | 5.06 -> 4.83 | 0.55 -> 0.54 | 0.80 -> 0.83 |
 
-At the same window v4 is a modest improvement: the grid median rises 0.2-0.9 m/s, the bias shrinks by 0.2-0.4 m/s and the RMSE by 0.2-0.3 m/s. Skill changes by +0.01 to +0.03 except BA at RP100 (-0.003). The WY1941-2026 values in the results table above differ from this refit because of WY2026 and the 37th station.
+At the same window v4 is a modest improvement: the grid median rises 0.2-0.9 m/s, the bias shrinks by 0.2-0.4 m/s and the RMSE by 0.2-0.3 m/s. Skill changes by +0.01 to +0.03 except BA at RP100 (-0.003). The WY1941-2026 values in the results table above differ from this refit because of WY2026 and the 37th station. The matched obs side also differs slightly between the versions (cnn_raw, 36 common stations, v4 refit against v3: -4.6 % to +1.1 %, median 0), so part of the v3 -> v4 delta is the obs side, not the product.
 
 ## v3 record (WY1941-2025, CNN-RTMA v3; superseded by the v4 results above)
 

@@ -177,6 +177,11 @@ def plot_rp_maps(rp: int, window: str, station_table: pd.DataFrame, station_rl: 
                           ticks=np.arange(MAP_VLIM[0], MAP_VLIM[1] + 0.1, 5.0))
         cb.set_label(f"RP{rp} wind speed (m s$^{{-1}}$)")
 
+    # Circles are each station's own full-record fit, whatever window the panels show (the common-window panels
+    # are WY2012-2026, the circles are not). Said once below the panels, where it covers no data.
+    fig.supxlabel("Circles: observed return level from each station's full record. "
+                  "Panel fields: fit window given in each panel.", fontsize=11)
+
     written = save_figure(fig, f"map_rl{rp}_{window}", outdir=w.FIG_DIR, purpose="report")
     plt.close(fig)
     return written[0]
@@ -282,12 +287,14 @@ def _scatter_and_skill_figure(mode: str, station_rl: pd.DataFrame, products: lis
         text_lines = []
         pooled_vals = []
         products_present = []
+        n_stations = []
 
         for product in products:
             df = pair_stations(station_rl, mode, rp, product)
             if df is None:
                 continue
             products_present.append(product)
+            n_stations.append(len(df))
             color = colors[product]
 
             for net, marker in NETWORK_MARKERS.items():
@@ -331,8 +338,15 @@ def _scatter_and_skill_figure(mode: str, station_rl: pd.DataFrame, products: lis
         ax.set_aspect("equal")
         ax.set_xlabel(f"Observed RP{rp} wind speed (m s$^{{-1}}$)")
         ax.set_ylabel(f"Model RP{rp} wind speed (m s$^{{-1}}$)")
-        ax.text(0.02, 0.97, f"({letter}) RP{rp}", transform=ax.transAxes, ha="left", va="top",
-                fontsize=12, fontweight="bold", zorder=11)
+        # window and station count come from the data (n can differ by a station between products); they sit
+        # next to the panel label in the empty top-left corner, not on the data
+        n_lo, n_hi = (min(n_stations), max(n_stations)) if n_stations else (0, 0)
+        n_txt = f"{n_lo}" if n_lo == n_hi else f"{n_lo}-{n_hi}"
+        window_txt = "matched windows" if mode == "matched" else "full records"
+        label = ax.text(0.02, 0.97, f"({letter}) RP{rp}", transform=ax.transAxes, ha="left", va="top",
+                        fontsize=12, fontweight="bold", zorder=11)
+        ax.annotate(f"{window_txt}, n = {n_txt}", xy=(1.0, 0.5), xycoords=label, xytext=(8, 0),
+                    textcoords="offset points", ha="left", va="center", fontsize=11, zorder=11)
         if text_lines:
             # every product sits below 1:1, so the upper-left triangle is empty
             ax.text(0.02, 0.90, "\n".join(text_lines), transform=ax.transAxes, ha="left", va="top",
